@@ -1,5 +1,4 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -23,9 +22,11 @@ module Database.Persist.MongoDB
 
 import Database.Persist
 import Database.Persist.Base
+
 import qualified Control.Monad.IO.Class as Trans
+
 import qualified Database.MongoDB as DB
-import Database.MongoDB.Query (Database, Failure)
+import Database.MongoDB.Query (Database)
 import Control.Applicative (Applicative)
 import Control.Exception (toException)
 import Data.UString (u)
@@ -36,8 +37,7 @@ import Data.Maybe (mapMaybe, fromJust)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as E
 import qualified Data.Serialize as S
-import Control.Exception (Exception, throwIO)
-import Data.Typeable (Typeable)
+import Control.Exception.Control (throwIO)
 import Control.Monad.MVar (MonadMVar (..))
 import Prelude hiding (catch)
 import qualified System.IO.Pool as Pool
@@ -63,17 +63,11 @@ withMongoDBPool dbname hostname connectionPoolSize connectionReader = do
                                      connectionPoolSize
   connectionReader (pool, dbname)
 
---runMongoDBConn :: (Trans.MonadIO m) => DB.AccessMode -> DB.Database -> DB.Action m b -> ConnectionPool -> m b
 runMongoDBConn :: (Trans.MonadIO m) => DB.AccessMode  ->  DB.Action m b -> ConnectionPool -> m b
 runMongoDBConn accessMode action (pool, databaseName) = do
   pipe <- Trans.liftIO $ DB.runIOE $ Pool.aResource pool
   res  <- DB.access pipe accessMode databaseName action
-  either (Trans.liftIO . throwIO . MongoDBException) return res
-
-
-newtype MongoDBException = MongoDBException Failure
-    deriving (Show, Typeable)
-instance Exception MongoDBException
+  either (throwIO . PersistMongoDBError . show) return res
 
 value :: DB.Field -> DB.Value
 value (_ DB.:= val) = val
@@ -199,7 +193,7 @@ instance (Trans.MonadIO m, Applicative m, Functor m, MonadMVar m) => PersistBack
         case mdocument of
           Nothing -> return Nothing
           Just document -> case pairFromDocument t document of
-              Left s -> error s
+              Left s -> throwIO $ PersistMarshalError s
               Right (k, x) -> return $ Just (k, x)
       where
         t = entityDef $ dummyFromUnique uniq
@@ -225,7 +219,7 @@ instance (Trans.MonadIO m, Applicative m, Functor m, MonadMVar m) => PersistBack
                 Nothing -> return $ Continue k
                 Just document -> case pairFromDocument t document of
                         Left s -> return $ Error $ toException
-                                    $ PersistMarshalException s
+                                    $ PersistMarshalError s
                         Right row -> do
                             step <- runIteratee $ k $ Chunks [row]
                             loop step curs
@@ -236,7 +230,7 @@ instance (Trans.MonadIO m, Applicative m, Functor m, MonadMVar m) => PersistBack
         case doc of
             Nothing -> return Nothing
             Just document -> case pairFromDocument t document of
-                Left s -> fail $ "pairFromDocument: could not convert. " ++ s
+                Left s -> throwIO $ PersistMarshalError s
                 Right row -> return $ Just row
       where
         t = entityDef $ dummyFromFilts filts
@@ -255,7 +249,7 @@ instance (Trans.MonadIO m, Applicative m, Functor m, MonadMVar m) => PersistBack
                 Just [_ DB.:= (DB.ObjId oid)] -> do
                     step <- runIteratee $ k $ Chunks [Key $ dbOidToKey oid]
                     loop step curs
-                Just y -> return $ Error $ toException $ PersistMarshalException
+                Just y -> return $ Error $ toException $ PersistMarshalError
                         $ "Unexpected in selectKeys: " ++ show y
         loop step _ = return step
 

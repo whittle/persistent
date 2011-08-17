@@ -13,10 +13,10 @@
 
 import Test.HUnit hiding (Test)
 import Test.Hspec.Monadic
-import Test.Hspec.HUnit
+import Test.Hspec.HUnit()
 
 import Database.Persist
-import Database.Persist.Base (PersistUpdate (Add, Assign), PersistFilter (..), ColumnDef (ColumnDef), DeleteCascade (..))
+import Database.Persist.Base (DeleteCascade (..))
 
 import Database.Persist.Join hiding (RunJoin)
 import qualified Database.Persist.Join
@@ -44,7 +44,9 @@ import Data.Int
 import Data.Word
 import qualified Control.Monad.IO.Control
 
-import Debug.FileLocation (debug)
+import Data.Text (Text)
+
+-- import Debug.FileLocation (debug)
 
 
 
@@ -65,7 +67,10 @@ assertNotEqual preface expected actual =
   where msg = (if null preface then "" else preface ++ "\n") ++
              "expected: " ++ show expected ++ "\n to not equal: " ++ show actual
 
+assertEmpty :: MonadIO m => [a] -> m ()
 assertEmpty xs    = liftIO $ assertBool "" (null xs)
+
+assertNotEmpty :: MonadIO m => [a] -> m ()
 assertNotEmpty xs = liftIO $ assertBool "" (not (null xs))
 
 
@@ -130,7 +135,7 @@ setup = do
   MongoDB.dropDatabase "test"   --(MongoDB.Database "test")
   return ()
   where
-    andVersion vresult = case debug $ show vresult of
+    andVersion vresult = case show vresult of
       '"':'1':'.':n:'.':minor -> let i = ((read [n]) ::Int) in i > 9 || (i == 9 && ((read $ init minor)::Int) >= 1)
       '"':'2':'.':_ -> True
 
@@ -142,6 +147,7 @@ db actions = do
   return r
 
 #else
+sqlite_database :: Text
 sqlite_database = "test/testdb.sqlite3"
 runConn :: Control.Monad.IO.Control.MonadControlIO m => SqlPersist m t -> m ()
 runConn f = do
@@ -510,7 +516,7 @@ specs = describe "persistent" $ do
           p2 = Person "E" 1 Nothing
           p3 = Person "F" 2 Nothing
       pid1 <- insert p1
-      _pid2 <- insert p2
+      _ <- insert p2
       pid3 <- insert p3
       x <- selectList [PersonId <-. [pid1, pid3]] []
       liftIO $ x @?= [(pid1, p1), (pid3, p3)]
