@@ -51,9 +51,10 @@ test-suite test
                    , time >= 1.2
                    , random == 1.*
                    , QuickCheck == 2.4.*
+                   , pgsql-simple
 
     -- these are mutually exclusive options
-    -- cpp-options: -DWITH_POSTGRESQL
+    cpp-options: -DWITH_POSTGRESQL
     -- cpp-options: -DWITH_MONGODB -DDEBUG
     ghc-options:   -Wall
     extra-libraries: sqlite3

@@ -1,5 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 -- | A postgresql backend for persistent.
 module Database.Persist.Postgresql
     ( withPostgresqlPool
@@ -7,6 +9,8 @@ module Database.Persist.Postgresql
     , module Database.Persist
     , module Database.Persist.GenericSql
     , PostgresConf (..)
+    , P.ConnectInfo (..)
+    , P.defaultConnectInfo
     ) where
 
 import Database.Persist hiding (Update)
@@ -14,10 +18,6 @@ import Database.Persist.Base hiding (Add, Update)
 import Database.Persist.GenericSql hiding (Key(..))
 import Database.Persist.GenericSql.Internal
 
-import qualified Database.HDBC as H
-import qualified Database.HDBC.PostgreSQL as H
-
-import Control.Monad.IO.Class (MonadIO (..))
 import Data.List (intercalate)
 import Data.IORef
 import qualified Data.Map as Map
@@ -26,51 +26,57 @@ import Control.Arrow
 import Data.List (sort, groupBy)
 import Data.Function (on)
 import Control.Monad.IO.Control (MonadControlIO)
+import Control.Monad.IO.Class (liftIO)
 
 import Data.ByteString (ByteString)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Encoding.Error as T
-import Data.Time.LocalTime (localTimeToUTC, utc)
-import Data.Text (Text, pack, unpack)
-import Data.Object
-import Control.Monad (forM)
+import Data.Text (Text, pack)
+import Data.Object (fromMapping, lookupScalar, ObjectExtractError)
 import Data.Neither (meither, MEither (..))
+import Data.String (fromString)
+
+import qualified Database.PostgreSQL.Simple as P
+import Database.PostgreSQL.Simple.Param (Param (..))
+import Database.PostgreSQL.Simple.QueryResults (QueryResults (..))
+import Database.PostgreSQL.Simple.Result (Result (convert))
+import Database.PostgreSQL.Simple.Types (Null (Null))
 
 withPostgresqlPool :: MonadControlIO m
-                   => T.Text
+                   => P.ConnectInfo
                    -> Int -- ^ number of connections to open
                    -> (ConnectionPool -> m a) -> m a
 withPostgresqlPool s = withSqlPool $ open' s
 
-withPostgresqlConn :: MonadControlIO m => T.Text -> (Connection -> m a) -> m a
+withPostgresqlConn :: MonadControlIO m => P.ConnectInfo -> (Connection -> m a) -> m a
 withPostgresqlConn = withSqlConn . open'
 
-open' :: T.Text -> IO Connection
+open' :: P.ConnectInfo -> IO Connection
 open' s = do
-    conn <- H.connectPostgreSQL $ T.unpack s
-    smap <- newIORef $ Map.empty
+    conn <- P.connect s
+    smap <- newIORef Map.empty
     return Connection
         { prepare = prepare' conn
         , stmtMap = smap
         , insertSql = insertSql'
-        , close = H.disconnect conn
+        , close = P.close conn
         , migrateSql = migrate'
         , begin = const $ return ()
-        , commitC = const $ H.commit conn
-        , rollbackC = const $ H.rollback conn
+        , commitC = const $ P.commit conn
+        , rollbackC = const $ P.rollback conn
         , escapeName = escape
         , noLimit = "LIMIT ALL"
         }
 
-prepare' :: H.Connection -> Text -> IO Statement
+prepare' :: P.Connection -> Text -> IO Statement
 prepare' conn sql = do
-    stmt <- H.prepare conn $ unpack sql
+    let query = fromString $ T.unpack sql
     return Statement
         { finalize = return ()
         , reset = return ()
-        , execute = execute' stmt
-        , withStmt = withStmt' stmt
+        , execute = execute' conn query
+        , withStmt = withStmt' conn query
         }
 
 insertSql' :: RawName -> [RawName] -> Either Text (Text, Text)
@@ -84,52 +90,46 @@ insertSql' t cols = Left $ pack $ concat
     , ") RETURNING id"
     ]
 
-execute' :: H.Statement -> [PersistValue] -> IO ()
-execute' stmt vals = do
-    _ <- H.execute stmt $ map pToSql vals
+execute' :: P.Connection -> P.Query -> [PersistValue] -> IO ()
+execute' conn query vals = do
+    _ <- P.execute conn query vals
     return ()
 
 withStmt' :: MonadControlIO m
-          => H.Statement
+          => P.Connection
+          -> P.Query
           -> [PersistValue]
           -> (RowPopper m -> m a)
           -> m a
-withStmt' stmt vals f = do
-    _ <- liftIO $ H.execute stmt $ map pToSql vals
-    f $ liftIO $ (fmap . fmap) (map pFromSql) $ H.fetchRow stmt
+withStmt' conn query vals f = do
+    iresult <- liftIO $ P.query conn query vals >>= newIORef
+    f $ pop iresult
+  where
+    pop ir = liftIO $ atomicModifyIORef ir $ \res ->
+        case res of
+            [] -> ([], Nothing)
+            (r:rs) -> (rs, Just r)
 
-pToSql :: PersistValue -> H.SqlValue
-pToSql (PersistText t) = H.SqlString $ unpack t
-pToSql (PersistByteString bs) = H.SqlByteString bs
-pToSql (PersistInt64 i) = H.SqlInt64 i
-pToSql (PersistDouble d) = H.SqlDouble d
-pToSql (PersistBool b) = H.SqlBool b
-pToSql (PersistDay d) = H.SqlLocalDate d
-pToSql (PersistTimeOfDay t) = H.SqlLocalTimeOfDay t
-pToSql (PersistUTCTime t) = H.SqlUTCTime t
-pToSql PersistNull = H.SqlNull
-pToSql (PersistList _) = error "Refusing to serialize a PersistList to a PostgreSQL value"
-pToSql (PersistMap _) = error "Refusing to serialize a PersistMap to a PostgreSQL value"
-pToSql (PersistObjectId _) = error "Refusing to serialize a PersistObjectId to a PostgreSQL value"
+instance Param PersistValue where
+    render (PersistText t) = render t
+    render (PersistByteString bs) = render bs
+    render (PersistInt64 i) = render i
+    render (PersistDouble d) = render d
+    render (PersistBool b) = render b
+    render (PersistDay d) = render d
+    render (PersistTimeOfDay t) = render t
+    render (PersistUTCTime t) = render t
+    render PersistNull = render Null
+    render PersistList{} = error "Refusing to serialize a PersistList to a PostgreSQL value"
+    render PersistMap{} = error "Refusing to serialize a PersistMap to a PostgreSQL value"
+    render PersistObjectId{}  = error "Refusing to serialize a PersistObjectId to a PostgreSQL value"
 
-pFromSql :: H.SqlValue -> PersistValue
-pFromSql (H.SqlString s) = PersistText $ pack s
-pFromSql (H.SqlByteString bs) = PersistByteString bs
-pFromSql (H.SqlWord32 i) = PersistInt64 $ fromIntegral i
-pFromSql (H.SqlWord64 i) = PersistInt64 $ fromIntegral i
-pFromSql (H.SqlInt32 i) = PersistInt64 $ fromIntegral i
-pFromSql (H.SqlInt64 i) = PersistInt64 $ fromIntegral i
-pFromSql (H.SqlInteger i) = PersistInt64 $ fromIntegral i
-pFromSql (H.SqlChar c) = PersistInt64 $ fromIntegral $ fromEnum c
-pFromSql (H.SqlBool b) = PersistBool b
-pFromSql (H.SqlDouble b) = PersistDouble b
-pFromSql (H.SqlRational b) = PersistDouble $ fromRational b
-pFromSql (H.SqlLocalDate d) = PersistDay d
-pFromSql (H.SqlLocalTimeOfDay d) = PersistTimeOfDay d
-pFromSql (H.SqlUTCTime d) = PersistUTCTime d
-pFromSql H.SqlNull = PersistNull
-pFromSql (H.SqlLocalTime d) = PersistUTCTime $ localTimeToUTC utc d
-pFromSql x = PersistText $ pack $ H.fromSql x -- FIXME
+instance QueryResults [PersistValue] where
+    convertResults = zipWith convert
+
+instance Result PersistValue where
+    convert _ Nothing = PersistNull
+    convert _ (Just bs) = PersistByteString bs -- FIXME
 
 migrate' :: PersistEntity val
          => (Text -> IO Statement)
@@ -455,7 +455,7 @@ bsToChars = T.unpack . T.decodeUtf8With T.lenientDecode
 
 -- | Information required to connect to a postgres database
 data PostgresConf = PostgresConf
-    { pgConnStr  :: Text
+    { pgConnStr  :: P.ConnectInfo
     , pgPoolSize :: Int
     }
 
@@ -466,10 +466,11 @@ instance PersistConfig PostgresConf where
     runPool _ = runSqlPool
     loadConfig e' = meither Left Right $ do
         e <- go $ fromMapping e'
-        db <- go $ lookupScalar "database" e
+        _db <- go $ lookupScalar "database" e
         pool' <- go $ lookupScalar "poolsize" e
-        pool <- safeRead "poolsize" pool'
+        _pool <- safeRead "poolsize" pool'
 
+        error "FIXME" {-
         -- TODO: default host/port?
         connparts <- forM ["user", "password", "host", "port"] $ \k -> do
             v <- go $ lookupScalar k e
@@ -478,6 +479,7 @@ instance PersistConfig PostgresConf where
         let conn = T.concat connparts
 
         return $ PostgresConf (T.concat [conn, " dbname=", db]) pool
+        -}
       where
         go :: MEither ObjectExtractError a -> MEither String a
         go (MLeft e) = MLeft $ show e

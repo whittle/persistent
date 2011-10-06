@@ -196,7 +196,13 @@ runConn :: Control.Monad.IO.Control.MonadControlIO m => SqlPersist m t -> m ()
 runConn f = do
     _<-withSqlitePool sqlite_database 1 $ runSqlPool f
 #if WITH_POSTGRESQL
-    _<-withPostgresqlPool "user=test password=test host=localhost port=5432 dbname=test" 1 $ runSqlPool f
+    _<-withPostgresqlPool defaultConnectInfo
+        { connectUser = "test"
+        , connectPort = 5432
+        , connectPassword = "test"
+        , connectDatabase = "test"
+        , connectHost = "localhost"
+        } 1 $ runSqlPool f
 #endif
     return ()
 
