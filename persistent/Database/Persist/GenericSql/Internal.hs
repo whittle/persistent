@@ -111,7 +111,9 @@ mkColumns allDefs val =
     go fd p =
         Column
             (fieldDB fd)
-            (nullable (fieldAttrs fd) || entitySum t)
+            (nullable (fieldAttrs fd) || case entitySum t of
+              Just UseForeignKeys -> True
+              Nothing -> False)
             (maybe (sqlType p) SqlOther $ listToMaybe $ mapMaybe (T.stripPrefix "sqltype=") $ fieldAttrs fd)
             (def $ fieldAttrs fd)
             (maxLen $ fieldAttrs fd)

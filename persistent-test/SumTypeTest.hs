@@ -30,27 +30,54 @@ import qualified Data.Text as T
 import Init
 
 #if WITH_MONGODB
-mkPersist persistSettings [persistLowerCase|
+mkPersist persistSettings [persistUpperCase|
 #else
 share [mkPersist sqlSettings, mkMigrate "sumTypeMigrate"] [persistLowerCase|
 #endif
 Bicycle
-    brand T.Text
+    make T.Text
+    deriving Show Eq
 Car
     make T.Text
     model T.Text
+    deriving Show Eq
 +Vehicle
     bicycle BicycleId
     car CarId
+    deriving Show Eq
++Transport
+    bicycle Bicycle
+    car Car
     deriving Show Eq
 |]
 
 specs :: Spec
 specs = describe "sum types" $ do
-    it "works" $ asIO $ runConn $ do
+    it "sum models" $ asIO $ runConn $ do
 #ifndef WITH_MONGODB
-        _ <- runMigrationSilent sumTypeMigrate
+        _ <- liftIO $ runMigrationSilent sumTypeMigrate
 #endif
+        car1 <- insert $ Car "Ford" "Thunderbird"
+        car2 <- insert $ Car "Kia" "Rio"
+        bike1 <- insert $ Bicycle "Shwinn"
+
+        return ()
+{-
+        vc1 <- insert $ TransportCarSum car1
+        vc2 <- insert $ TransportCarSum car2
+        vb1 <- insert $ TransportBicycleSum bike1
+
+        x1 <- get vc1
+        liftIO $ x1 @?= Just (TransportCarSum car1)
+
+        x2 <- get vc2
+        liftIO $ x2 @?= Just (TransportCarSum car2)
+
+        x3 <- get vb1
+        liftIO $ x3 @?= Just (TransportBicycleSum bike1)
+        -}
+
+    it "sum ids" $ asIO $ runConn $ do
         car1 <- insert $ Car "Ford" "Thunderbird"
         car2 <- insert $ Car "Kia" "Rio"
         bike1 <- insert $ Bicycle "Shwinn"

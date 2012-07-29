@@ -194,8 +194,11 @@ mkEntityDef ps name entattribs lines =
   where
     (isSum, name') =
         case T.uncons name of
-            Just ('+', x) -> (True, x)
-            _ -> (False, name)
+            Just ('+', x) ->
+              case T.uncons x of
+                Just ('>', y) -> (Just UseEntityFields, y)
+                _ -> (Just UseForeignKeys, x)
+            _ -> (Nothing, name)
     (attribs, extras) = splitExtras lines
     idName [] = "id"
     idName (t:ts) =

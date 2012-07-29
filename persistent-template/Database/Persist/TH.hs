@@ -53,6 +53,7 @@ import Data.Aeson
     , Value (Object), (.:), (.:?)
     )
 import Control.Applicative (pure, (<*>))
+import Data.Maybe (isNothing)
 
 -- | Converts a quasi-quoted syntax into a list of entity definitions, to be
 -- used as input to the template haskell generation code (mkPersist).
@@ -147,9 +148,9 @@ dataTypeDec t =
     cols = map (mkCol $ unHaskellName $ entityHaskell t) $ entityFields t
     backend = mkName "backend"
 
-    constrs
-        | entitySum t = map sumCon $ entityFields t
-        | otherwise = [RecC name cols]
+    constrs = case entitySum t of
+                Just UseForeignKeys -> map sumCon $ entityFields t
+                Nothing -> [RecC name cols]
 
     sumCon fd@(FieldDef _ _ ty _) = NormalC
         (sumConstrName t fd)
@@ -229,9 +230,10 @@ degen x = x
 mkToPersistFields :: String -> EntityDef -> Q Dec
 mkToPersistFields constr ed@EntityDef { entitySum = isSum, entityFields = fields } = do
     clauses <-
-        if isSum
-            then sequence $ zipWith goSum fields [1..]
-            else fmap return go
+        case isSum of
+          Just UseForeignKeys ->
+            sequence $ zipWith goSum fields [1..]
+          Nothing -> fmap return go
     return $ FunD (mkName "toPersistFields") clauses
   where
     go :: Q Clause
@@ -328,7 +330,7 @@ mkHalfDefined constr count' =
                     (replicate count' $ VarE $ mkName "undefined")) []]
 
 mkFromPersistValues :: EntityDef -> Q [Clause]
-mkFromPersistValues t@(EntityDef { entitySum = False }) = do
+mkFromPersistValues t@(EntityDef { entitySum = Nothing }) = do
     nothing <- [|Left $(liftT "Invalid fromPersistValues input")|]
     let cons' = ConE $ mkName $ unpack $ unHaskellName $ entityHaskell t
     xs <- mapM (const $ newName "x") $ entityFields t
@@ -344,7 +346,7 @@ mkFromPersistValues t@(EntityDef { entitySum = False }) = do
         ]
   where
     go ap' x y = InfixE (Just x) ap' (Just y)
-mkFromPersistValues t@(EntityDef { entitySum = True }) = do
+mkFromPersistValues t@(EntityDef { entitySum = Just UseForeignKeys }) = do
     nothing <- [|Left $(liftT "Invalid fromPersistValues input")|]
     clauses <- mkClauses [] $ entityFields t
     return $ clauses `mappend` [Clause [WildP] (NormalB nothing) []]
@@ -397,10 +399,11 @@ mkEntity mps t = do
         , tpf
         , FunD (mkName "fromPersistValues") fpv
         , mkHalfDefined
-            (if entitySum t
-                then sumConstrName t (head $ entityFields t)
-                else mkName nameS)
-            (if entitySum t then 1 else length $ entityFields t)
+            (case entitySum t of
+              Just UseForeignKeys ->
+                sumConstrName t (head $ entityFields t)
+              Nothing -> mkName nameS)
+            (if isNothing (entitySum t) then length $ entityFields t else 1)
         , toFieldNames
         , utv
         , puk
@@ -566,11 +569,13 @@ mkDeleteCascade defs = do
             ]
 
 mkUniqueKeys :: EntityDef -> Q Dec
-mkUniqueKeys def | entitySum def =
-    return $ FunD (mkName "persistUniqueKeys") [Clause [WildP] (NormalB $ ListE []) []]
-mkUniqueKeys def = do
-    c <- clause
-    return $ FunD (mkName "persistUniqueKeys") [c]
+mkUniqueKeys def =
+  case entitySum def of
+    Just UseForeignKeys ->
+      return $ FunD (mkName "persistUniqueKeys") [Clause [WildP] (NormalB $ ListE []) []]
+    Nothing -> do
+      c <- clause
+      return $ FunD (mkName "persistUniqueKeys") [c]
   where
     clause = do
         xs <- forM (entityFields def) $ \(FieldDef x _ _ _) -> do
@@ -682,6 +687,9 @@ instance Lift FieldDef where
     lift (FieldDef a b c d) = [|FieldDef $(lift a) $(lift b) $(lift c) $(liftTs d)|]
 instance Lift UniqueDef where
     lift (UniqueDef a b c) = [|UniqueDef $(lift a) $(lift b) $(lift c)|]
+instance Lift SumImplementation where
+    lift (UseForeignKeys) = [|UseForeignKeys|]
+    lift (UseEntityFields) = [|UseEntityFields|]
 
 pack' :: String -> Text
 pack' = pack

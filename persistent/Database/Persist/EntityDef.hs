@@ -5,6 +5,7 @@ module Database.Persist.EntityDef
     , Attr
       -- * Defs
     , EntityDef (..)
+    , SumImplementation (..)
     , FieldDef (..)
     , FieldType (..)
     , UniqueDef (..)
@@ -16,6 +17,9 @@ module Database.Persist.EntityDef
 import Data.Text (Text, stripSuffix, pack)
 import Data.Map (Map)
 
+data SumImplementation = UseForeignKeys | UseEntityFields
+                         deriving (Show, Eq, Read, Ord)
+
 data EntityDef = EntityDef
     { entityHaskell :: HaskellName
     , entityDB      :: DBName
@@ -25,7 +29,7 @@ data EntityDef = EntityDef
     , entityUniques :: [UniqueDef]
     , entityDerives :: [Text]
     , entityExtra   :: Map Text [ExtraLine]
-    , entitySum     :: Bool
+    , entitySum     :: Maybe SumImplementation
     }
     deriving (Show, Eq, Read, Ord)
 
