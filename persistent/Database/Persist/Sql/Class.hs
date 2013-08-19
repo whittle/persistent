@@ -296,7 +296,7 @@ instance (Ord a, PersistFieldSql a) => PersistFieldSql (S.Set a) where
     sqlType _ = SqlString
 instance (PersistFieldSql a, PersistFieldSql b) => PersistFieldSql (a,b) where
     sqlType _ = SqlString
-instance PersistFieldSql v => PersistFieldSql (M.Map T.Text v) where
+instance PersistFieldSql v => PersistFieldSql (M.Map PersistValue v) where
     sqlType _ = SqlString
 instance PersistFieldSql PersistValue where
     sqlType _ = SqlInt64 -- since PersistValue should only be used like this for keys, which in SQL are Int64

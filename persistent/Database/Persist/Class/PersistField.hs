@@ -264,8 +264,14 @@ instance (PersistField a, PersistField b) => PersistField (a,b) where
         (_, Left e) -> Left e
     fromPersistValue x = Left $ T.pack $ "Expected 2 item PersistList, received: " ++ show x
 
+{-
 instance PersistField v => PersistField (M.Map T.Text v) where
     toPersistValue = PersistMap . map (\(k,v) -> (k, toPersistValue v)) . M.toList
+    fromPersistValue = fromPersistMap <=< getPersistMap
+-}
+
+instance PersistField v => PersistField (M.Map PersistValue v) where
+    toPersistValue = PersistMap . map (\(k,v) -> (toPersistValue k, toPersistValue v)) . M.toList
     fromPersistValue = fromPersistMap <=< getPersistMap
 
 instance PersistField PersistValue where
@@ -278,8 +284,8 @@ fromPersistList :: PersistField a => [PersistValue] -> Either T.Text [a]
 fromPersistList = mapM fromPersistValue
 
 fromPersistMap :: PersistField v
-               => [(T.Text, PersistValue)]
-               -> Either T.Text (M.Map T.Text v)
+               => [(PersistValue, PersistValue)]
+               -> Either T.Text (M.Map PersistValue v)
 fromPersistMap kvs =
       case (
         foldl (\eithAssocs (k,v) ->
@@ -292,7 +298,7 @@ fromPersistMap kvs =
         Right vs -> Right $ M.fromList vs
         Left e -> Left e
 
-getPersistMap :: PersistValue -> Either T.Text [(T.Text, PersistValue)]
+getPersistMap :: PersistValue -> Either T.Text [(PersistValue, PersistValue)]
 getPersistMap (PersistMap kvs) = Right kvs
 getPersistMap (PersistText t)  = getPersistMap (PersistByteString $ TE.encodeUtf8 t)
 getPersistMap (PersistByteString bs)

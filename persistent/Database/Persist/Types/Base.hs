@@ -183,7 +183,7 @@ data PersistValue = PersistText Text
                   | PersistZonedTime ZT
                   | PersistNull
                   | PersistList [PersistValue]
-                  | PersistMap [(Text, PersistValue)]
+                  | PersistMap [(PersistValue, PersistValue)]
                   | PersistObjectId ByteString -- ^ intended especially for MongoDB backend
     deriving (Show, Read, Eq, Typeable, Ord)
 
@@ -228,7 +228,7 @@ instance A.ToJSON PersistValue where
     toJSON (PersistDay d) = A.String $ T.pack $ 'd' : show d
     toJSON PersistNull = A.Null
     toJSON (PersistList l) = A.Array $ V.fromList $ map A.toJSON l
-    toJSON (PersistMap m) = A.object $ map (second A.toJSON) m
+    -- toJSON (PersistMap m) = A.object $ map (second A.toJSON) m
     toJSON (PersistObjectId o) =
       A.toJSON $ showChar 'o' $ showHexLen 8 (bs2i four) $ showHexLen 16 (bs2i eight) ""
         where
@@ -282,10 +282,11 @@ instance A.FromJSON PersistValue where
     parseJSON (A.Bool b) = return $ PersistBool b
     parseJSON A.Null = return $ PersistNull
     parseJSON (A.Array a) = fmap PersistList (mapM A.parseJSON $ V.toList a)
-    parseJSON (A.Object o) =
-        fmap PersistMap $ mapM go $ HM.toList o
+    {-
+    parseJSON (A.Object o) = fmap PersistMap $ mapM go $ HM.toList o
       where
         go (k, v) = fmap ((,) k) $ A.parseJSON v
+        -}
 
 -- | A SQL data type. Naming attempts to reflect the underlying Haskell
 -- datatypes, eg SqlString instead of SqlVarchar. Different SQL databases may

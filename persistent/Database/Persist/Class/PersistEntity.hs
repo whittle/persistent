@@ -128,8 +128,8 @@ instance PersistField entity => PersistField (Entity entity) where
         _ -> error $ T.unpack $ errMsg "expected PersistMap"
 
     fromPersistValue (PersistMap alist) = case after of
-        [] -> Left $ errMsg $ "did not find " `mappend` idField `mappend` " field"
-        ("_id", k):afterRest ->
+        [] -> Left $ errMsg $ "did not find " `mappend` idFieldName `mappend` " field"
+        (PersistText "_id", k):afterRest ->
             case fromPersistValue (PersistMap (before ++ afterRest)) of
                 Right record -> Right $ Entity (Key k) record
                 Left err     -> Left err
@@ -145,5 +145,8 @@ errMsg = mappend "PersistField entity fromPersistValue: "
 
 -- | Realistically this is only going to be used for MongoDB,
 -- so lets use MongoDB conventions
-idField :: Text
-idField = "_id"
+idFieldName :: Text
+idFieldName = "_id"
+
+idField :: PersistValue
+idField = PersistText idFieldName

@@ -612,7 +612,7 @@ persistFieldFromEntity :: MkPersistSettings -> EntityDef a -> Q [Dec]
 persistFieldFromEntity mps e = do
     ss <- [|SqlString|]
     let columnNames = map (unpack . unHaskellName . fieldHaskell) (entityFields e)
-    obj <- [|\ent -> PersistMap $ zip (map pack columnNames) (map toPersistValue $ toPersistFields ent)|]
+    obj <- [|\ent -> PersistMap $ zip (map (PersistText . pack) columnNames) (map toPersistValue $ toPersistFields ent)|]
     fpv <- [|\x -> fromPersistValues $ map (\(_,v) -> case fromPersistValue v of
                                                       Left e' -> error $ unpack e'
                                                       Right r -> r) x|]
