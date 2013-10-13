@@ -287,7 +287,15 @@ instance PersistField PersistValue where
     toPersistValue = id
     fromPersistValue = Right
 
-deriving instance PersistField (KeyBackend backend entity)
+instance PersistField (KeyBackend backend entity) where
+    toPersistValue (Key key) = toPersistValue key
+    toPersistValue (CompositeKey keys) = toPersistValue keys
+
+    fromPersistValue (PersistList [])   = Left $ T.pack "Expected CompositeKey, got []"
+    fromPersistValue (PersistList keys) = Right $ CompositeKey keys
+    fromPersistValue pv@(PersistInt64 _) = Right $ Key pv
+    fromPersistValue pv@(PersistByteString _) = Right $ Key pv
+    fromPersistValue pv = Left $ T.pack $ "Expected a Key PersistValue, got" ++ show pv
 
 fromPersistList :: PersistField a => [PersistValue] -> Either T.Text [a]
 fromPersistList = mapM fromPersistValue

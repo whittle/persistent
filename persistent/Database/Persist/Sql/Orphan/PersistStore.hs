@@ -46,7 +46,7 @@ instance (C.MonadResource m, MonadLogger m) => PersistStore (SqlPersistT m) wher
         t = entityDef $ Just val
         vals = map toPersistValue $ toPersistFields val
 
-    replace k val = do
+    replace (Key k) val = do
         conn <- askSqlConn
         let t = entityDef $ Just val
         let sql = T.concat
@@ -58,7 +58,7 @@ instance (C.MonadResource m, MonadLogger m) => PersistStore (SqlPersistT m) wher
                 , connEscapeName conn $ entityID t
                 , "=?"
                 ]
-            vals = map toPersistValue (toPersistFields val) `mappend` [unKey k]
+            vals = map toPersistValue (toPersistFields val) `mappend` [k]
         rawExecute sql vals
       where
         go conn x = connEscapeName conn x `T.append` "=?"
@@ -71,9 +71,9 @@ instance (C.MonadResource m, MonadLogger m) => PersistStore (SqlPersistT m) wher
           Nothing -> insertKey key value
           Just _ -> replace key value
 
-    get k = do
+    get key@(Key k) = do
         conn <- askSqlConn
-        let t = entityDef $ dummyFromKey k
+        let t = entityDef $ dummyFromKey key
         let cols = T.intercalate ","
                  $ map (connEscapeName conn . fieldDB) $ entityFields t
         let sql = T.concat
@@ -85,21 +85,21 @@ instance (C.MonadResource m, MonadLogger m) => PersistStore (SqlPersistT m) wher
                 , connEscapeName conn $ entityID t
                 , "=?"
                 ]
-            vals' = [unKey k]
+            vals' = [k]
         rawQuery sql vals' C.$$ do
             res <- CL.head
             case res of
                 Nothing -> return Nothing
                 Just vals ->
                     case fromPersistValues vals of
-                        Left e -> error $ "get " ++ show (unKey k) ++ ": " ++ unpack e
+                        Left e -> error $ "get " ++ show k ++ ": " ++ unpack e
                         Right v -> return $ Just v
 
-    delete k = do
+    delete key@(Key k) = do
         conn <- askSqlConn
-        rawExecute (sql conn) [unKey k]
+        rawExecute (sql conn) [k]
       where
-        t = entityDef $ dummyFromKey k
+        t = entityDef $ dummyFromKey key
         sql conn = T.concat
             [ "DELETE FROM "
             , connEscapeName conn $ entityDB t

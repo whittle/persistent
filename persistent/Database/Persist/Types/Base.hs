@@ -265,7 +265,7 @@ instance A.ToJSON PersistValue where
 
          -- taken from crypto-api
          bs2i :: ByteString -> Integer
-         bs2i bs = foldl' (\i b -> (i `shiftL` 8) + fromIntegral b) 0 bs
+         bs2i = foldl' (\i b -> (i `shiftL` 8) + fromIntegral b) 0
          {-# INLINE bs2i #-}
 
          -- showHex of n padded with leading zeros if necessary to fill d digits
@@ -311,10 +311,9 @@ instance A.FromJSON PersistValue where
     parseJSON (A.Number (AN.I i)) = return $ PersistInt64 $ fromInteger i
     parseJSON (A.Number (AN.D d)) = return $ PersistDouble d
     parseJSON (A.Bool b) = return $ PersistBool b
-    parseJSON A.Null = return $ PersistNull
-    parseJSON (A.Array a) = fmap PersistList (mapM A.parseJSON $ V.toList a)
-    parseJSON (A.Object o) =
-        fmap PersistMap $ mapM go $ HM.toList o
+    parseJSON A.Null = return PersistNull
+    parseJSON (A.Array a)  = fmap PersistList (mapM A.parseJSON $ V.toList a)
+    parseJSON (A.Object o) = fmap PersistMap $ mapM go $ HM.toList o
       where
         go (k, v) = fmap ((,) k) $ A.parseJSON v
 
@@ -335,14 +334,13 @@ data SqlType = SqlString
              | SqlOther T.Text -- ^ a backend-specific name
     deriving (Show, Read, Eq, Typeable, Ord)
 
-newtype KeyBackend backend entity = Key { unKey :: PersistValue }
+data KeyBackend backend entity = Key PersistValue
+                               | CompositeKey [PersistValue]
     deriving (Show, Read, Eq, Ord)
 
-type family KeyEntity key
-type instance KeyEntity (KeyBackend backend entity) = entity
-
 instance A.ToJSON (KeyBackend backend entity) where
-    toJSON (Key val) = A.toJSON val
+    toJSON (Key k) = A.toJSON k
+    toJSON (CompositeKey keys) = A.toJSON keys
 
 instance A.FromJSON (KeyBackend backend entity) where
     parseJSON = fmap Key . A.parseJSON

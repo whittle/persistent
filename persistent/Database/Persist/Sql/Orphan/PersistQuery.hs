@@ -26,7 +26,7 @@ import Data.Conduit
 -- orphaned instance for convenience of modularity
 instance (MonadResource m, MonadLogger m) => PersistQuery (SqlPersistT m) where
     update _ [] = return ()
-    update k upds = do
+    update key@(Key k) upds = do
         conn <- askSqlConn
         let go'' n Assign = n <> "=?"
             go'' n Add = T.concat [n, "=", n, "+?"]
@@ -44,9 +44,9 @@ instance (MonadResource m, MonadLogger m) => PersistQuery (SqlPersistT m) where
                 , "=?"
                 ]
         rawExecute sql $
-            map updatePersistValue upds `mappend` [unKey k]
+            map updatePersistValue upds `mappend` [k]
       where
-        t = entityDef $ dummyFromKey k
+        t = entityDef $ dummyFromKey key
         go x = (fieldDB $ updateFieldDef x, updateUpdate x)
 
     count filts = do

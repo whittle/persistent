@@ -690,7 +690,7 @@ specs = describe "persistent" $ do
 
   it "rawSql/order-proof" $ db $ do
       let p1 = Person "Zacarias" 93 Nothing
-      p1k <- insert p1
+      p1k@(Key k) <- insert p1
       escape <- ((. DBName) . connEscapeName) `fmap` askSqlConn
       let query = T.concat [ "SELECT ?? "
                            , "FROM ", escape "Person"
@@ -698,7 +698,7 @@ specs = describe "persistent" $ do
       ret1 <- rawSql query []
       ret2 <- rawSql query []
       liftIO $ ret1 @?= [Entity p1k p1]
-      liftIO $ ret2 @?= [Entity (Key $ unKey p1k) (RFO p1)]
+      liftIO $ ret2 @?= [Entity (Key k) (RFO p1)]
 
   it "rawSql/OUTER JOIN" $ db $ do
       let insert' :: (PersistStore m, PersistEntity val, PersistEntityBackend val ~ PersistMonadBackend m)
