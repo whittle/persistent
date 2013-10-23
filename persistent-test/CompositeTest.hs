@@ -45,12 +45,16 @@ import qualified Control.Exception.Control as Control
 #  endif
 import System.Random
 
+#ifdef WITH_MONGODB
+import qualified Database.MongoDB as MongoDB
+#else
 #  if WITH_POSTGRESQL
 import Database.Persist.Postgresql
 #endif
 #  if WITH_MYSQL
 import Database.Persist.MySQL()
 #  endif
+#endif
 
 
 import Control.Monad.IO.Class
@@ -69,13 +73,19 @@ import Control.Applicative ((<$>),(<*>))
 import Control.Monad.Trans.Resource (runResourceT)
 import Debug.Trace
 
+#ifdef WITH_MONGODB
+mkPersist persistSettings [persistUpperCase|
+#else
 share [mkPersist sqlSettings,  mkMigrate "compositeMigrate", mkDeleteCascade sqlSettings] [persistLowerCase|
+#endif
   TestChild
       name1 String maxlen=20
       name2 String maxlen=20
       age3 Int
       extra4 String
+#ifndef WITH_MONGODB
       Foreign TestParent fkparent name1 name2 age3
+#endif
       deriving Show Eq
   TestParent
       name11 String maxlen=20
@@ -188,7 +198,9 @@ specs = describe "composite" $ do
       isJust mc @== True
       let Just c11 = mc
       c1 @== c11
+#ifndef WITH_MONGODB
       testChildFkparent c11 @== kp1
+#endif
         
     it "Validate Key contents" $ db $ do
       kp1 <- insert p1

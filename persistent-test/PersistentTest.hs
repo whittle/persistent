@@ -76,7 +76,7 @@ import Data.Functor.Constant
 import PersistTestPetType
 
 #ifdef WITH_MONGODB
-mkPersist (mkPersistSettings $ ConT ''MongoBackend) [persistUpperCase|
+mkPersist persistSettings [persistUpperCase|
 #else
 share [mkPersist sqlSettings,  mkMigrate "testMigrate", mkDeleteCascade sqlSettings] [persistUpperCase|
 #endif
