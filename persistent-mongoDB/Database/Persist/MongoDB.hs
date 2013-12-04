@@ -133,7 +133,6 @@ instance FromJSON NoOrphanPortID where
 data Connection = Connection DB.Pipe DB.Database
 type ConnectionPool = Pool.Pool Connection
 
-type instance BackendKey MongoBackend = ByteString
 {-
 -- | ToPathPiece is used to convert a key to/from text
 instance PersistEntity record => PathPiece (KeyBackend MongoBackend record) where

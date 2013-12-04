@@ -43,6 +43,10 @@ flag nooverlap
 library
     extra-libraries: sqlite3
 
+    extensions: QuasiQuotes
+                TemplateHaskell
+                CPP
+
     exposed-modules: PersistentTest
                      PersistTestPetType
                      RenameTest

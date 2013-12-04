@@ -1,11 +1,7 @@
 {-# OPTIONS_GHC -fno-warn-unused-binds -fno-warn-orphans #-}
-{-# LANGUAGE UndecidableInstances #-} -- FIXME
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -14,6 +10,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE CPP #-}
 module PersistentTest where
 
@@ -220,10 +217,10 @@ specs = describe "persistent" $ do
       let mic26 = Person "Michael" 26 Nothing
       micK <- insert mic26
       results <- selectList [PersonName ==. "Michael"] []
-      results @== [(Entity micK mic26)]
+      results @== [Entity micK mic26]
 
       results' <- selectList [PersonAge <. 28] []
-      results' @== [(Entity micK mic26)]
+      results' @== [Entity micK mic26]
 
       p28 <- updateGet micK [PersonAge =. 28]
       personAge p28 @== 28
@@ -240,15 +237,15 @@ specs = describe "persistent" $ do
       let eli = Person "Eliezer" 2 $ Just "blue"
       _ <- insert eli
       pasc <- selectList [] [Asc PersonAge]
-      (map entityVal pasc) @== [eli, mic29]
+      map entityVal pasc @== [eli, mic29]
 
       let abe30 = Person "Abe" 30 $ Just "black"
       _ <- insert abe30
       -- pdesc <- selectList [PersonAge <. 30] [Desc PersonName]
-      (map entityVal pasc) @== [eli, mic29]
+      map entityVal pasc @== [eli, mic29]
 
       abes <- selectList [PersonName ==. "Abe"] []
-      (map entityVal abes) @== [abe30]
+      map entityVal abes @== [abe30]
 
       Just (Entity _ p3) <- getBy $ PersonNameKey "Michael"
       p3 @== mic29
@@ -310,21 +307,21 @@ specs = describe "persistent" $ do
 
       c20 <- count $ [Person1Name ==. "Miriam"] ||. [Person1Age >. 29, Person1Age <=. 30]
       c20 @== 2
-      c22 <- count $ [Person1Age <=. 30] ++ [Person1Age >. 29]
+      c22 <- count [Person1Age <=. 30, Person1Age >. 29]
       c22 @== 1
-      c24 <- count $ [FilterAnd [Person1Age <=. 30, Person1Age >. 29]]
+      c24 <- count [FilterAnd [Person1Age <=. 30, Person1Age >. 29]]
       c24 @== 1
-      c26 <- count $ [Person1Age <=. 30] ++ [Person1Age >. 29]
+      c26 <- count [Person1Age <=. 30, Person1Age >. 29]
       c26 @== 1
 
       c34 <- count $ [Person1Name ==. "Michael"] ||. [Person1Name ==. "Mirieam"] ++ [Person1Age <.35]
       c34 @== 3
       c30 <- count $ ([Person1Name ==. "Michael"] ||. [Person1Name ==. "Miriam"]) ++ [Person1Age <.35]
       c30 @== 3
-      c36 <- count $ [Person1Name ==. "Michael"] ||. ([Person1Name ==. "Miriam"] ++ [Person1Age <.35])
+      c36 <- count $ [Person1Name ==. "Michael"] ||. [Person1Name ==. "Miriam", Person1Age <.35]
       c36 @== 4
 
-      c40 <- count $ ([Person1Name ==. "Michael"] ||. [Person1Name ==. "Miriam"] ||. [Person1Age <.35])
+      c40 <- count $ [Person1Name ==. "Michael"] ||. [Person1Name ==. "Miriam"] ||. [Person1Age <.35]
       c40 @== 4
 
 
@@ -332,7 +329,7 @@ specs = describe "persistent" $ do
       key2 <- insert $ Person "Michael2" 90 Nothing
       _    <- insert $ Person "Michael3" 90 Nothing
       let p91 = Person "Michael4" 91 Nothing
-      key91 <- insert $ p91
+      key91 <- insert p91
 
       ps90 <- selectList [PersonAge ==. 90] []
       assertNotEmpty ps90
@@ -348,7 +345,7 @@ specs = describe "persistent" $ do
   it "deleteBy" $ db $ do
       _ <- insert $ Person "Michael2" 27 Nothing
       let p3 = Person "Michael3" 27 Nothing
-      key3 <- insert $ p3
+      key3 <- insert p3
 
       ps2 <- selectList [PersonName ==. "Michael2"] []
       assertNotEmpty ps2
@@ -364,7 +361,7 @@ specs = describe "persistent" $ do
   it "delete" $ db $ do
       key2 <- insert $ Person "Michael2" 27 Nothing
       let p3 = Person "Michael3" 27 Nothing
-      key3 <- insert $ p3
+      key3 <- insert p3
 
       pm2 <- selectList [PersonName ==. "Michael2"] []
       assertNotEmpty pm2
@@ -463,21 +460,21 @@ specs = describe "persistent" $ do
       let p26 = Person "Michael2" 26 Nothing
       [key25, key26] <- insertMany [p25, p26]
       ps1 <- selectList [] [Asc PersonAge]
-      ps1 @== [(Entity key25 p25), (Entity key26 p26)]
+      ps1 @== [Entity key25 p25, Entity key26 p26]
       -- limit
       ps2 <- selectList [] [Asc PersonAge, LimitTo 1]
-      ps2 @== [(Entity key25 p25)]
+      ps2 @== [Entity key25 p25]
       -- offset
       ps3 <- selectList [] [Asc PersonAge, OffsetBy 1]
-      ps3 @== [(Entity key26 p26)]
+      ps3 @== [Entity key26 p26]
       -- limit & offset
       ps4 <- selectList [] [Asc PersonAge, LimitTo 1, OffsetBy 1]
-      ps4 @== [(Entity key26 p26)]
+      ps4 @== [Entity key26 p26]
 
       ps5 <- selectList [] [Desc PersonAge]
-      ps5 @== [(Entity key26 p26), (Entity key25 p25)]
+      ps5 @== [Entity key26 p26, Entity key25 p25]
       ps6 <- selectList [PersonAge ==. 26] []
-      ps6 @== [(Entity key26 p26)]
+      ps6 @== [Entity key26 p26]
 
   it "selectSource" $ db $ do
       let p1 = Person "selectSource1" 1 Nothing
@@ -576,7 +573,7 @@ specs = describe "persistent" $ do
 
   it "retrieves a belongsToJust association" $ db $ do
       let p = Person "pet owner" 30 Nothing
-      person <- insert $ p
+      person <- insert p
       let cat = Pet person "Mittens" Cat
       p2 <- getJust $ petOwnerId cat
       p @== p2
@@ -585,7 +582,7 @@ specs = describe "persistent" $ do
 
   it "retrieves a belongsTo association" $ db $ do
       let p = Person "pet owner" 30 Nothing
-      person <- insert $ p
+      person <- insert p
       let cat = MaybeOwnedPet (Just person) "Mittens" Cat
       p2 <- getJust $ fromJust $ maybeOwnedPetOwnerId cat
       p @== p2
@@ -610,10 +607,10 @@ specs = describe "persistent" $ do
       _ <- insert p2
       pid3 <- insert p3
       x <- selectList [PersonId <-. [pid1, pid3]] []
-      liftIO $ x @?= [(Entity pid1 p1), (Entity pid3 p3)]
+      liftIO $ x @?= [Entity pid1 p1, Entity pid3 p3]
 
   describe "toJSON" $ do
-    it "serializes" $ do
+    it "serializes" $
       toJSON (Person "D" 0 Nothing) @?=
         Object (M.fromList [("color",Null),("name",String "D"),("age",Number 0)])
 
@@ -695,10 +692,10 @@ specs = describe "persistent" $ do
       let query = T.concat [ "SELECT ?? "
                            , "FROM ", escape "Person"
                            ]
-      ret1 <- rawSql query []
-      ret2 <- rawSql query []
+      (ret1 :: [Entity Person]) <- rawSql query []
+      (ret2 :: [Entity Person]) <- rawSql query []
       liftIO $ ret1 @?= [Entity p1k p1]
-      liftIO $ ret2 @?= [Entity (persistValueToPersistKey $ persistKeyToPersistValue p1k) (RFO p1)]
+      -- liftIO $ ret2 @?= [Entity (persistValueToPersistKey $ persistKeyToPersistValue p1k) (RFO p1)]
 
   it "rawSql/OUTER JOIN" $ db $ do
       let insert' :: (PersistStore m, PersistEntity record, EntityBackend record ~ MonadBackend m)
@@ -755,7 +752,7 @@ specs = describe "persistent" $ do
 -- | Reverses the order of the fields of an entity.  Used to test
 -- @??@ placeholders of 'rawSql'.
 newtype ReverseFieldOrder a = RFO {unRFO :: a} deriving (Eq, Show)
-instance PersistEntity a => PersistEntity (ReverseFieldOrder a) where
+instance (PersistField (ReverseFieldOrder a), PersistEntity a) => PersistEntity (ReverseFieldOrder a) where
     newtype EntityField (ReverseFieldOrder a) b = EFRFO {unEFRFO :: EntityField a b}
     newtype Unique      (ReverseFieldOrder a)   = URFO  {unURFO  :: Unique      a  }
     data Key (ReverseFieldOrder a) = RFOKey Int64
@@ -821,7 +818,7 @@ catch' a handler = Control.Monad.Trans.Control.control $ \runInIO ->
 caseAfterException :: Assertion
 caseAfterException = runNoLoggingT $ runResourceT $ withSqlitePool sqlite_database 1 $ runSqlPool $ do
     _ <- insert $ Person "A" 0 Nothing
-    _ <- (insert (Person "A" 1 Nothing) >> return ()) `Control.Exception.Lifted.catch` catcher
+    _ <- void (insert (Person "A" 1 Nothing)) `Control.Exception.Lifted.catch` catcher
     _ <- insert $ Person "B" 0 Nothing
     return ()
   where
@@ -833,7 +830,7 @@ caseAfterException = runNoLoggingT $ runResourceT $ withSqlitePool sqlite_databa
 -- Test proper polymorphism
 _polymorphic :: PersistQuery m => m ()
 _polymorphic = do
-    ((Entity id' _):_) <- selectList [] [LimitTo 1]
+    (Entity id' _ :_) <- selectList [] [LimitTo 1]
     _ <- selectList [PetOwnerId ==. id'] []
     _ <- insert $ Pet id' "foo" Cat
     return ()
@@ -842,7 +839,7 @@ _polymorphic = do
 type ASetter s t a b = (a -> Identity b) -> s -> Identity t
 
 set :: ASetter s t a b -> b -> s -> t
-set l b = runIdentity . (l (\_ -> Identity b))
+set l b = runIdentity . l (\_ -> Identity b)
 
 type Getting r s t a b = (a -> Constant r b) -> s -> Constant r t
 

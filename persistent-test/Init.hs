@@ -194,5 +194,5 @@ instance Arbitrary PersistValue where
     arbitrary = PersistInt64 `fmap` choose (0, maxBound)
 #endif
 
-instance PersistEntity record => Arbitrary (KeyBackend backend record) where
+instance PersistEntity record => Arbitrary (Key record) where
   arbitrary = persistValueToPersistKey `fmap` arbitrary

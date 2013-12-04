@@ -10,7 +10,6 @@ module Database.Persist.Class.PersistEntity
     , BackendSpecificFilter
     , Filter (..)
     , KeyBackend
-    , BackendKey
     , Entity (..)
 
     , keyValueEntityToJSON, keyValueEntityFromJSON
@@ -38,7 +37,7 @@ import Data.Monoid (mappend)
 --
 -- Some advanced type system capabilities are used to make this process type-safe.
 -- Normal usage of the persistent API does not require understanding the class associated data and functions.
-class PersistEntity record where
+class PersistField record => PersistEntity record where
     -- | An 'EntityField' is parameterised by the Haskell record it belongs to
     -- and the additional type of that field
     data EntityField record :: * -> *
@@ -82,9 +81,10 @@ instance PersistEntity record => ToJSON   (Key record) where
     toJSON = toJSON . persistKeyToPersistValue
 instance PersistEntity record => FromJSON (Key record) where
     parseJSON = fmap persistValueToPersistKey . parseJSON
-
+ 
 type KeyBackend backend record = Key record
-type family BackendKey backend
+
+
 
 -- deriving instance Eq (KeyBackend backend record)
 -- deriving instance Ord (Key record) - , Read, Show)

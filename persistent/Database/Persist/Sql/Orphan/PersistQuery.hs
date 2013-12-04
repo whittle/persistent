@@ -428,7 +428,7 @@ orderClause includeTable conn o =
             else id)
         $ connEscapeName conn $ fieldDB x
 
-dummyFromKey :: KeyBackend SqlBackend v -> Maybe v
+dummyFromKey :: KeyBackend SqlBackend record -> Maybe record
 dummyFromKey _ = Nothing
 
 -- | Generates sql for limit and offset for postgres, sqlite and mysql.

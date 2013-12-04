@@ -3,6 +3,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE GADTs, FlexibleContexts, FlexibleInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans -fno-warn-missing-fields #-}
 -- | This module provides utilities for creating backends. Regular users do not
 -- need to use this module.
@@ -63,6 +64,7 @@ import Data.Aeson
 import Control.Applicative (pure, (<*>))
 import Control.Monad.Logger (MonadLogger)
 import Database.Persist.Sql (sqlType)
+import Data.Int (Int64)
 
 {-
 readMay :: Read a => String -> Maybe a
@@ -491,10 +493,28 @@ isNotNull :: PersistValue -> Bool
 isNotNull PersistNull = False
 isNotNull _ = True
 
+
+data BackendKey backend where
+  SqlKey   :: PersistField (BackendKey SqlBackend) => Int64 -> BackendKey SqlBackend
+  -- MongoKey :: ByteString -> BackendKey MongoBackend
+{-
+[d| data $keyName backend where
+      $(keyName ++ "Sql") :: PersistField ($keyName SqlBackend) => Int64 -> $keyName SqlBackend
+|]
+instance PersistField (BackendKey SqlBackend) where
+  toPersistValue   (SqlKey i)       = PersistInt64 i
+  fromPersistValue (PersistInt64 i) = Right (SqlKey i)
+  -}
+instance PersistField (BackendKey backend) where
+  toPersistValue = backendKeyToPersistValue
+backendKeyToPersistValue (SqlKey i) = PersistInt64 i
+backendKeyFromPersistValue (PersistInt64 i) = (SqlKey i)
 --
 -- data KeyBackend backend (ContactGeneric backend) = ContactKey !Int64
-mkAssociatedKey :: MkPersistSettings -> EntityDef a -> Type -> Q [Dec]
-mkAssociatedKey mps t backendKeyType = do
+mkAssociatedKey :: MkPersistSettings -> EntityDef a -> Q [Dec]
+mkAssociatedKey mps t = do
+  let backendKeyType = ConT ''BackendKey `AppT` -- mpsBackend mps
+          if mpsGeneric mps then backendType else mpsBackend mps
   let keyName    = mkName $ entName t `mappend` "Key"
   let recordType = entityType mps t
   insideKeyName <- newName "x"
@@ -634,9 +654,7 @@ mkEntity mps t = do
     tpf <- mkToPersistFields mps t
     fpv <- mkFromPersistValues mps t
 
-    let backendKeyType = ConT ''BackendKey `AppT` mpsBackend mps
-            -- if mpsGeneric mps then backendType else mpsBackend mps
-    key <- mkAssociatedKey mps t backendKeyType
+    key <- mkAssociatedKey mps t
     utv <- mkUniqueToValues $ entityUniques t
     puk <- mkUniqueKeys t
     fkc <- mapM (mkForeignKeysComposite mps t) $ entityForeigns t
@@ -665,7 +683,9 @@ mkEntity mps t = do
        dataTypeDec mps t : mconcat fkc `mappend`
       ([ TySynD idName [] $
             ConT ''Key `AppT` ConT (entNameName t)
-      , InstanceD [] clazz $
+      , InstanceD [
+          -- ClassP ''PersistField [backendKeyType]
+      ] clazz $
         [ uniqueTypeDec mps t
         , FunD 'entityDef [Clause [WildP] (NormalB t') []]
         , tpf
@@ -689,11 +709,11 @@ mkEntity mps t = do
             ''EntityBackend
 #if MIN_VERSION_template_haskell(2,9,0)
             (TySynEqn
+#endif
                [genericDataType]
-               (backendDataType mps))
-#else
-            [genericDataType]
-            (backendDataType mps)
+               (backendDataType mps)
+#if MIN_VERSION_template_haskell(2,9,0)
+            )
 #endif
         , FunD 'persistIdField [Clause [] (NormalB $ ConE idName) []]
         , FunD 'fieldLens lensClauses
