@@ -185,7 +185,7 @@ instance (MonadResource m, MonadLogger m) => PersistQuery (SqlPersistT m) where
 --
 -- Since 1.1.5
 deleteWhereCount :: (PersistEntity val, MonadSqlPersist m)
-                 => [Filter val]
+                 => [Filter db val]
                  -> m Int64
 deleteWhereCount filts = do
     conn <- askSqlConn
@@ -204,7 +204,7 @@ deleteWhereCount filts = do
 --
 -- Since 1.1.5
 updateWhereCount :: (PersistEntity val, MonadSqlPersist m)
-                 => [Filter val]
+                 => [Filter db val]
                  -> [Update val]
                  -> m Int64
 updateWhereCount _ [] = return 0
@@ -233,13 +233,13 @@ updateWhereCount filts upds = do
     go' conn (x, pu) = go'' (connEscapeName conn x) pu
     go x = (fieldDB $ updateFieldDef x, updateUpdate x)
 
-updateFieldDef :: PersistEntity v => Update v -> FieldDef SqlType
+updateFieldDef :: PersistEntity v => Update v -> FieldDef
 updateFieldDef (Update f _ _) = persistFieldDef f
 
-dummyFromFilts :: [Filter v] -> Maybe v
-dummyFromFilts _ = Nothing
+dummyFromFilts :: [Filter db record] -> record
+dummyFromFilts = undefined
 
-getFiltsValues :: forall val.  PersistEntity val => Connection -> [Filter val] -> [PersistValue]
+getFiltsValues :: forall db val.  PersistEntity val => Connection -> [Filter db val] -> [PersistValue]
 getFiltsValues conn = snd . filterClauseHelper False False conn OrNullNo
 
 data OrNull = OrNullYes | OrNullNo
@@ -249,7 +249,7 @@ filterClauseHelper :: PersistEntity val
              -> Bool -- ^ include WHERE?
              -> Connection
              -> OrNull
-             -> [Filter val]
+             -> [Filter db val]
              -> (Text, [PersistValue])
 filterClauseHelper includeTable includeWhere conn orNull filters =
     (if not (T.null sql) && includeWhere
@@ -402,7 +402,7 @@ updatePersistValue (Update _ v _) = toPersistValue v
 filterClause :: PersistEntity val
              => Bool -- ^ include table name?
              -> Connection
-             -> [Filter val]
+             -> [Filter db val]
              -> Text
 filterClause b c = fst . filterClauseHelper b True c OrNullNo
 
@@ -415,10 +415,10 @@ orderClause includeTable conn o =
     case o of
         Asc  x -> name $ persistFieldDef x
         Desc x -> name (persistFieldDef x) <> " DESC"
-        _ -> error $ "orderClause: expected Asc or Desc, not limit or offset"
+        _ -> error "orderClause: expected Asc or Desc, not limit or offset"
   where
-    dummyFromOrder :: SelectOpt a -> Maybe a
-    dummyFromOrder _ = Nothing
+    dummyFromOrder :: SelectOpt a -> a
+    dummyFromOrder = undefined
 
     tn = connEscapeName conn $ entityDB $ entityDef $ dummyFromOrder o
 
@@ -428,8 +428,8 @@ orderClause includeTable conn o =
             else id)
         $ connEscapeName conn $ fieldDB x
 
-dummyFromKey :: KeyBackend SqlBackend record -> Maybe record
-dummyFromKey _ = Nothing
+dummyFromKey :: Key record -> record
+dummyFromKey = undefined
 
 -- | Generates sql for limit and offset for postgres, sqlite and mysql.
 decorateSQLWithLimitOffset::Text -> (Int,Int) -> Bool -> Text -> Text 

@@ -64,7 +64,6 @@ import Data.Aeson
 import Control.Applicative (pure, (<*>))
 import Control.Monad.Logger (MonadLogger)
 import Database.Persist.Sql (sqlType)
-import Data.Int (Int64)
 
 {-
 readMay :: Read a => String -> Maybe a
@@ -110,11 +109,11 @@ parseSqlType ps s =
   where
     defsOrig = parse ps s
 
-sqlEntityType :: [EntityDef ()] -> EntityDef () -> EntityDef SqlTypeExp
+sqlEntityType :: [EntityDef] -> EntityDef -> EntityDef
 sqlEntityType allEntities ent = ent
     { entityFields = map sqlFieldDef $ entityFields ent }
   where
-    sqlFieldDef :: FieldDef () -> FieldDef SqlTypeExp
+    sqlFieldDef :: FieldDef -> FieldDef
     sqlFieldDef field = do
         field
             { fieldSqlType = final
@@ -124,8 +123,8 @@ sqlEntityType allEntities ent = ent
         -- In the case of embedding, there won't be any datatype created yet.
         -- We just use SqlString, as the data will be serialized to JSON.
         final
-            | isJust (mEmbedded (fieldType field)) = SqlString'
-            | isReference = SqlInt64'
+            | isJust (mEmbedded (fieldType field)) = SqlString
+            | isReference = SqlInt64
             | otherwise =
                 case fieldType field of
                     -- In the case of lists, we always serialize to a string
@@ -136,8 +135,8 @@ sqlEntityType allEntities ent = ent
                     -- a list of entity IDs, the datatype for the ID has not
                     -- yet been created, so the compiler will fail. This extra
                     -- clause works around this limitation.
-                    FTList _ -> SqlString'
-                    _ -> SqlTypeExp st
+                    FTList _ -> SqlString
+                    _ -> SqlString
 
         mEmbedded (FTTypeCon Just{} _) = Nothing
         mEmbedded (FTTypeCon Nothing n) = let name = HaskellName n in
@@ -165,7 +164,7 @@ instance Lift SqlTypeExp where
 
 -- | Create data types and appropriate 'PersistEntity' instances for the given
 -- 'EntityDef's. Works well with the persist quasi-quoter.
-mkPersist :: MkPersistSettings -> [EntityDef SqlType] -> Q [Dec]
+mkPersist :: MkPersistSettings -> [EntityDef] -> Q [Dec]
 mkPersist mps ents' = fmap mconcat $ flip mapM ents $ \ent -> do
     x <- persistFieldFromEntity mps ent
     y <- mkEntity mps ent
@@ -176,7 +175,7 @@ mkPersist mps ents' = fmap mconcat $ flip mapM ents $ \ent -> do
 
 -- | Implement special preprocessing on EntityDef as necessary for 'mkPersist'.
 -- For example, strip out any fields marked as MigrationOnly.
-fixEntityDef :: EntityDef a -> EntityDef a
+fixEntityDef :: EntityDef -> EntityDef
 fixEntityDef ed =
     ed { entityFields = filter keepField $ entityFields ed }
   where
@@ -256,7 +255,7 @@ lowerFirst = mapFirst toLower
 upperFirst :: Text -> Text
 upperFirst = mapFirst toUpper
 
-dataTypeDec :: MkPersistSettings -> EntityDef a -> Dec
+dataTypeDec :: MkPersistSettings -> EntityDef -> Dec
 dataTypeDec mps t =
     DataD [] nameFinal paramsFinal constrs
     $ map mkName $ entityDerives t
@@ -266,9 +265,7 @@ dataTypeDec mps t =
          if fieldStrict then IsStrict else NotStrict,
          pairToType mps (fieldType, nullable fieldAttrs)
         )
-    (nameFinal, paramsFinal)
-        | mpsGeneric mps = (genericTypeName t, [PlainTV backendName])
-        | otherwise = (name, [])
+    (nameFinal, paramsFinal) = (name, [])
     name = entNameName t
     cols = map (mkCol $ entName t) $ entityFields t
 
@@ -280,27 +277,27 @@ dataTypeDec mps t =
         (sumConstrName mps t fd)
         [(NotStrict, pairToType mps (fieldType fd, NotNullable))]
 
-sumConstrName :: MkPersistSettings -> EntityDef a -> FieldDef b -> Name
+sumConstrName :: MkPersistSettings -> EntityDef -> FieldDef -> Name
 sumConstrName mps t FieldDef {..} = mkName $ concat
     [ if mpsPrefixFields mps then entName t else ""
     , upperFirst $ unHaskellName fieldHaskell
     , "Sum"
     ]
 
-entityUpdates :: EntityDef a -> [(HaskellName, FieldType, IsNullable, PersistUpdate)]
+entityUpdates :: EntityDef -> [(HaskellName, FieldType, IsNullable, PersistUpdate)]
 entityUpdates =
     concatMap go . entityFields
   where
     go FieldDef {..} = map (\a -> (fieldHaskell, fieldType, nullable fieldAttrs, a)) [minBound..maxBound]
 
-uniqueTypeDec :: MkPersistSettings -> EntityDef a -> Dec
+uniqueTypeDec :: MkPersistSettings -> EntityDef -> Dec
 uniqueTypeDec mps t =
     DataInstD [] ''Unique
-        [entityType mps t]
+        [entityType t]
             (map (mkUnique mps t) $ entityUniques t)
             []
 
-mkUnique :: MkPersistSettings -> EntityDef a -> UniqueDef -> Con
+mkUnique :: MkPersistSettings -> EntityDef -> UniqueDef -> Con
 mkUnique mps t (UniqueDef (HaskellName constr) _ fields attrs) =
     NormalC (mkName constr) types
   where
@@ -313,7 +310,7 @@ mkUnique mps t (UniqueDef (HaskellName constr) _ fields attrs) =
     go (_, Nullable _) | not force = error nullErrMsg
     go (ft, y) = (NotStrict, pairToType mps (ft, y))
 
-    lookup3 :: Text -> [FieldDef a] -> (FieldType, IsNullable)
+    lookup3 :: Text -> [FieldDef] -> (FieldType, IsNullable)
     lookup3 s [] =
         error $ unpack $ "Column not found: " ++ s ++ " in unique " ++ constr
     lookup3 x (FieldDef {..}:rest)
@@ -343,41 +340,8 @@ backendName = mkName "backend"
 backendType :: Type
 backendType = VarT backendName
 
-backendDataType :: MkPersistSettings -> Type
-backendDataType mps
-    | mpsGeneric mps = backendType
-    | otherwise = mpsBackend mps
-
-entityTypeBackend :: MkPersistSettings
-            -> EntityDef a
-            -> Type -- ^ backend
-            -> Type
-entityTypeBackend mps t = entityTypeFromName mps (entName t)
-
-entityType :: MkPersistSettings -> EntityDef a -> Type
-entityType mps t = entityTypeBackend mps t backendType
-
-entityTypeFromName :: MkPersistSettings
-                -> Text -- ^ entity name
-                -> Type -- ^ backend
-                -> Type
-entityTypeFromName mps eName backend
-    | mpsGeneric mps = genericTypeFromName backend eName
-    | otherwise = ConT $ mkName eName
-
-genericTypeName :: EntityDef a -> Name
-genericTypeName t = genericTypeNameFromName $ entName t
-
-genericTypeFromName :: Type -> Text -> Type
-genericTypeFromName backend eName = ConT (genericTypeNameFromName eName) `AppT` backend
-
-genericTypeNameFromName :: Text -> Name
-genericTypeNameFromName eName = mkName $ eName `mappend` "Generic"
-
-{-
-genericType :: EntityDef a -> Type
-genericType t = genericTypeFromName $ entName t
--}
+entityType :: EntityDef -> Type
+entityType = ConT . mkName . entName
 
 
 
@@ -385,13 +349,8 @@ idType :: MkPersistSettings -> FieldType -> Type
 idType mps typ =
     case stripId typ of
         Just typ' ->
-            ConT ''KeyBackend `AppT` backend'
-            `AppT` entityTypeFromName mps typ' backendType
+            ConT ''Key `AppT` ConT (mkName typ')
         Nothing -> ftToType typ
-  where
-    backend'
-        | mpsGeneric mps = backendType
-        | otherwise = mpsBackend mps
 
 degen :: [Clause] -> [Clause]
 degen [] =
@@ -400,7 +359,7 @@ degen [] =
      in [Clause [WildP] (NormalB err) []]
 degen x = x
 
-mkToPersistFields :: MkPersistSettings -> EntityDef a -> Q Dec
+mkToPersistFields :: MkPersistSettings -> EntityDef -> Q Dec
 mkToPersistFields mps t@EntityDef { entitySum = isSum, entityFields = fields } = do
     clauses <-
         if isSum
@@ -418,7 +377,7 @@ mkToPersistFields mps t@EntityDef { entitySum = isSum, entityFields = fields } =
 
     fieldCount = length fields
 
-    goSum :: FieldDef a -> Int -> Q Clause
+    goSum :: FieldDef -> Int -> Q Clause
     goSum fd idx = do
         let name = sumConstrName mps t fd
         enull <- [|SomePersistField PersistNull|]
@@ -494,9 +453,6 @@ isNotNull PersistNull = False
 isNotNull _ = True
 
 
-data BackendKey backend where
-  SqlKey   :: PersistField (BackendKey SqlBackend) => Int64 -> BackendKey SqlBackend
-  -- MongoKey :: ByteString -> BackendKey MongoBackend
 {-
 [d| data $keyName backend where
       $(keyName ++ "Sql") :: PersistField ($keyName SqlBackend) => Int64 -> $keyName SqlBackend
@@ -505,18 +461,18 @@ instance PersistField (BackendKey SqlBackend) where
   toPersistValue   (SqlKey i)       = PersistInt64 i
   fromPersistValue (PersistInt64 i) = Right (SqlKey i)
   -}
-instance PersistField (BackendKey backend) where
-  toPersistValue = backendKeyToPersistValue
-backendKeyToPersistValue (SqlKey i) = PersistInt64 i
-backendKeyFromPersistValue (PersistInt64 i) = (SqlKey i)
 --
--- data KeyBackend backend (ContactGeneric backend) = ContactKey !Int64
-mkAssociatedKey :: MkPersistSettings -> EntityDef a -> Q [Dec]
+-- data KeyBackend backend (Contact) = ContactKey !Int64
+mkAssociatedKey :: MkPersistSettings -> EntityDef -> Q [Dec]
 mkAssociatedKey mps t = do
-  let backendKeyType = ConT ''BackendKey `AppT` -- mpsBackend mps
-          if mpsGeneric mps then backendType else mpsBackend mps
-  let keyName    = mkName $ entName t `mappend` "Key"
-  let recordType = entityType mps t
+  let keyText = entName t `mappend` "Key"
+  let keyName = mkName keyText
+  let keyType = VarT $ mkName "keyTyp"
+
+  let autoKey = [ForallC [] [EqualP keyType (ConT ''DbSpecific)] $ NormalC keyName [(NotStrict, ConT ''PersistValue)]]
+
+  let ikey = ConT ''DbSpecific
+  let recordType = entityType t
   insideKeyName <- newName "x"
   fpv <- [| \x -> case fromPersistValue x of
               Left e' -> error $ unpack e'
@@ -524,9 +480,9 @@ mkAssociatedKey mps t = do
         |]
   tpv <- [| toPersistValue $(return $ VarE insideKeyName) |]
   return
-        [
-          DataInstD [] ''Key [ recordType ]
-            [ NormalC keyName [ (IsStrict, backendKeyType) ] ] []
+        [ TySynInstD (mkName "KeyType") [recordType] ikey
+        -- , DataInstD [] ''IKey [ recordType ] [NormalC (mkName $ "I" `mappend` keyText) [(IsStrict, ConT ''PersistValue)]] []
+        , DataInstD [] ''PKey [ recordType, keyType ] autoKey []
         ,  FunD 'persistValueToPersistKey [ Clause [] (NormalB fpv) []]
         ,  FunD 'persistKeyToPersistValue [ Clause
              [ConP keyName [VarP insideKeyName]]
@@ -535,16 +491,16 @@ mkAssociatedKey mps t = do
            ]
         ]
 
-entId :: EntityDef a -> Text
+entId :: EntityDef -> Text
 entId = flip mappend "Id" . entName
 
-entName :: EntityDef a -> Text
+entName :: EntityDef -> Text
 entName = unHaskellName . entityHaskell
 
-entNameName :: EntityDef a -> Name
+entNameName :: EntityDef -> Name
 entNameName = mkName . entName
 
-mkFromPersistValues :: MkPersistSettings -> EntityDef a -> Q [Clause]
+mkFromPersistValues :: MkPersistSettings -> EntityDef -> Q [Clause]
 mkFromPersistValues mps t@(EntityDef { entitySum = False }) = do
     nothing <- [|Left $(liftT $ "Invalid fromPersistValues input. Entity: " `mappend` entName t)|]
     let cons' = ConE $ entNameName t
@@ -595,7 +551,7 @@ type Lens s t a b = forall f. Functor f => (a -> f b) -> s -> f t
 lensPTH :: (s -> a) -> (s -> b -> t) -> Lens s t a b
 lensPTH sa sbt afb s = fmap (sbt s) (afb $ sa s)
 
-mkLensClauses :: MkPersistSettings -> EntityDef a -> Q [Clause]
+mkLensClauses :: MkPersistSettings -> EntityDef -> Q [Clause]
 mkLensClauses mps t = do
     lens' <- [|lensPTH|]
     getId <- [|entityKey|]
@@ -648,7 +604,7 @@ mkLensClauses mps t = do
             ]
             $ ConE 'Entity `AppE` VarE keyName `AppE` (ConE (sumConstrName mps t f) `AppE` VarE xName)
 
-mkEntity :: MkPersistSettings -> EntityDef SqlType -> Q [Dec]
+mkEntity :: MkPersistSettings -> EntityDef -> Q [Dec]
 mkEntity mps t = do
     t' <- lift t
     tpf <- mkToPersistFields mps t
@@ -671,15 +627,9 @@ mkEntity mps t = do
         : entityFields t
     toFieldNames <- mkToFieldNames $ entityUniques t
 
-    let addSyn -- FIXME maybe remove this
-            | mpsGeneric mps = (:) $
-                TySynD (entNameName t) [] $
-                    entityTypeBackend mps t $ mpsBackend mps
-            | otherwise = id
-
     lensClauses <- mkLensClauses mps t
 
-    return $ addSyn $
+    return $
        dataTypeDec mps t : mconcat fkc `mappend`
       ([ TySynD idName [] $
             ConT ''Key `AppT` ConT (entNameName t)
@@ -699,32 +649,21 @@ mkEntity mps t = do
         , DataInstD
             []
             ''EntityField
-            [ genericDataType
+            [ entityType t
             , VarT $ mkName "typ"
             ]
             (map fst fields)
             []
         , FunD 'persistFieldDef (map snd fields)
-        , TySynInstD
-            ''EntityBackend
-#if MIN_VERSION_template_haskell(2,9,0)
-            (TySynEqn
-#endif
-               [genericDataType]
-               (backendDataType mps)
-#if MIN_VERSION_template_haskell(2,9,0)
-            )
-#endif
         , FunD 'persistIdField [Clause [] (NormalB $ ConE idName) []]
         , FunD 'fieldLens lensClauses
         ]
       ])
   where
-    genericDataType = entityType mps t
-    idName          = mkName $ entId t
-    clazz           = ConT ''PersistEntity `AppT` genericDataType
+    idName = mkName $ entId t
+    clazz  = ConT ''PersistEntity `AppT` entityType t
 
-mkForeignKeysComposite :: MkPersistSettings -> EntityDef a -> ForeignDef -> Q [Dec]
+mkForeignKeysComposite :: MkPersistSettings -> EntityDef -> ForeignDef -> Q [Dec]
 mkForeignKeysComposite mps t fdef = do
    let fieldName f = mkName $ recName mps (entName t) (unHaskellName f)
    let fname        = fieldName $ foreignConstraintNameHaskell fdef
@@ -756,7 +695,7 @@ mkForeignKeysComposite mps t fdef = do
 --            Nothing -> error $ "Missing field: " `mappend` unpack name) columnNames 
 --    fromPersistValue x = Left $ "Expected PersistMap, received: " ++ show x
 --    sqlType _ = SqlString
-persistFieldFromEntity :: MkPersistSettings -> EntityDef a -> Q [Dec]
+persistFieldFromEntity :: MkPersistSettings -> EntityDef -> Q [Dec]
 persistFieldFromEntity mps e = do
     ss <- [|SqlString|]
     let columnNames = map (unpack . unHaskellName . fieldHaskell) (entityFields e)
@@ -769,7 +708,7 @@ persistFieldFromEntity mps e = do
                                       Left e' -> error $ unpack e'
                                       Right r -> r
                               Nothing -> error $ "Missing field: " `mappend` unpack name) (map pack columnNames)|]
-    let typ = entityType mps e
+    let typ = entityType e
 
     compose <- [|(<=<)|]
     getPersistMap' <- [|getPersistMap|]
@@ -790,15 +729,15 @@ persistFieldFromEntity mps e = do
 -- This function is useful for cases such as:
 --
 -- >>> share [mkSave "myDefs", mkPersist sqlSettings] [persistLowerCase|...|]
-share :: [[EntityDef a] -> Q [Dec]] -> [EntityDef a] -> Q [Dec]
+share :: [[EntityDef] -> Q [Dec]] -> [EntityDef] -> Q [Dec]
 share fs x = fmap mconcat $ mapM ($ x) fs
 
 -- | Save the @EntityDef@s passed in under the given name.
-mkSave :: Text -> [EntityDef SqlType] -> Q [Dec]
+mkSave :: Text -> [EntityDef] -> Q [Dec]
 mkSave name' defs' = do
     let name = mkName name'
     defs <- lift defs'
-    return [ SigD name $ ListT `AppT` (ConT ''EntityDef `AppT` ConT ''SqlType)
+    return [ SigD name $ ListT `AppT` (ConT ''EntityDef)
            , FunD name [Clause [] (NormalB defs) []]
            ]
 
@@ -810,16 +749,16 @@ data Dep = Dep
     }
 
 -- | Generate a 'DeleteCascade' instance for the given @EntityDef@s.
-mkDeleteCascade :: MkPersistSettings -> [EntityDef a] -> Q [Dec]
+mkDeleteCascade :: MkPersistSettings -> [EntityDef] -> Q [Dec]
 mkDeleteCascade mps defs = do
     let deps = concatMap getDeps defs
     mapM (go deps) defs
   where
-    getDeps :: EntityDef a -> [Dep]
+    getDeps :: EntityDef -> [Dep]
     getDeps def =
         concatMap getDeps' $ entityFields $ fixEntityDef def
       where
-        getDeps' :: FieldDef a -> [Dep]
+        getDeps' :: FieldDef -> [Dep]
         getDeps' FieldDef {..} =
             case stripId fieldType of
                 Just f ->
@@ -830,7 +769,7 @@ mkDeleteCascade mps defs = do
                         , depSourceNull  = nullable fieldAttrs
                         }
                 Nothing -> []
-    go :: [Dep] -> EntityDef a -> Q Dec
+    go :: [Dep] -> EntityDef -> Q Dec
     go allDeps t@EntityDef{} = do
         let deps = filter (\x -> depTarget x == entName t) allDeps
         key <- newName "key"
@@ -859,20 +798,19 @@ mkDeleteCascade mps defs = do
             stmts = map mkStmt deps `mappend`
                     [NoBindS $ del `AppE` VarE key]
 
-        let entityT = entityType mps t
+        let entityT = entityType t
         let monad = VarT $ mkName "m"
 
         return $
             InstanceD
             [ ClassP ''PersistQuery [monad]
-            , EqualP (ConT ''EntityBackend `AppT` entityT) (ConT ''MonadBackend `AppT` monad)
             ]
             (ConT ''DeleteCascade `AppT` entityT `AppT` monad)
             [ FunD 'deleteCascade
                 [Clause [VarP key] (NormalB $ DoE stmts) []]
             ]
 
-mkUniqueKeys :: EntityDef a -> Q Dec
+mkUniqueKeys :: EntityDef -> Q Dec
 mkUniqueKeys def | entitySum def =
     return $ FunD 'persistUniqueKeys [Clause [WildP] (NormalB $ ListE []) []]
 mkUniqueKeys def = do
@@ -944,7 +882,7 @@ derivePersistField s = do
 -- defined here. One thing to be aware of is dependencies: if you have entities
 -- with foreign references, make sure to place those definitions after the
 -- entities they reference.
-mkMigrate :: Lift' a => Text -> [EntityDef a] -> Q [Dec]
+mkMigrate :: Text -> [EntityDef] -> Q [Dec]
 mkMigrate fun allDefs = do
     body' <- body
     return
@@ -974,13 +912,13 @@ mkMigrate fun allDefs = do
                 return $ LetS [ValD (VarP defsName) (NormalB defsExp) []]
               stmts <- mapM (toStmt $ VarE defsName) defs
               return (DoE $ defsStmt : stmts)
-    toStmt :: Lift' a => Exp -> EntityDef a -> Q Stmt
+    toStmt :: Exp -> EntityDef -> Q Stmt
     toStmt defsExp ed = do
         u <- lift ed
         m <- [|migrate|]
         return $ NoBindS $ m `AppE` defsExp `AppE` u
 
-instance Lift' a => Lift (EntityDef a) where
+instance Lift EntityDef where
     lift (EntityDef a b c d e f g h i j k) =
         [|EntityDef
             $(lift a)
@@ -995,7 +933,7 @@ instance Lift' a => Lift (EntityDef a) where
             $(liftMap j)
             $(lift k)
             |]
-instance Lift' a => Lift (FieldDef a) where
+instance Lift FieldDef where
     lift (FieldDef a b c d e f g) = [|FieldDef a b c $(lift' d) $(liftTs e) f $(lift' g)|]
 instance Lift UniqueDef where
     lift (UniqueDef a b c d) = [|UniqueDef $(lift a) $(lift b) $(lift c) $(liftTs d)|]
@@ -1012,7 +950,7 @@ instance Lift' SqlType where
 instance Lift' a => Lift' (Maybe a) where
     lift' Nothing = [|Nothing|]
     lift' (Just a) = [|Just $(lift' a)|]
-instance Lift' a => Lift' (EntityDef a) where
+instance Lift' EntityDef where
     lift' = lift
 instance Lift' () where
     lift' () = [|()|]
@@ -1092,7 +1030,7 @@ instance Lift SqlType where
 -- forall . typ ~ FieldType => EntFieldName
 --
 -- EntFieldName = FieldDef ....
-mkField :: MkPersistSettings -> EntityDef a -> FieldDef SqlType -> Q (Con, Clause)
+mkField :: MkPersistSettings -> EntityDef -> FieldDef -> Q (Con, Clause)
 mkField mps et cd = do
     let con = ForallC
                 []
@@ -1114,12 +1052,12 @@ mkField mps et cd = do
         case stripId $ fieldType cd of
             Just ft ->
                  ConT ''Key
-                    `AppT` entityTypeFromName mps ft backendType
+                    `AppT` ConT (mkName ft)
             Nothing -> ftToType $ fieldType cd
 
 filterConName :: MkPersistSettings
-              -> EntityDef sqlType1
-              -> FieldDef sqlType2
+              -> EntityDef
+              -> FieldDef
               -> Name
 filterConName mps entity field = filterConName' mps (entityHaskell entity) (fieldHaskell field)
 
@@ -1144,7 +1082,7 @@ infixr 5 ++
 (++) :: Text -> Text -> Text
 (++) = append
 
-mkJSON :: MkPersistSettings -> EntityDef a -> Q [Dec]
+mkJSON :: MkPersistSettings -> EntityDef -> Q [Dec]
 mkJSON _ def | not ("json" `elem` entityAttrs def) = return []
 mkJSON mps def = do
     pureE <- [|pure|]
@@ -1161,7 +1099,7 @@ mkJSON mps def = do
         $ entityFields def
 
     let conName = mkName $ entName def
-        typ = entityType mps def
+        typ = entityType def
         toJSONI = InstanceD
             []
             (ConT ''ToJSON `AppT` typ)

@@ -42,51 +42,51 @@ class MonadIO m => PersistStore m where
     type MonadBackend m
 
     -- | Get a record by identifier, if available.
-    get :: (Show (Key record), MonadBackend m ~ EntityBackend record, PersistEntity record)
+    get :: (PersistEntity record)
         => Key record -> m (Maybe record)
 
     -- | Create a new record in the database, returning an automatically created
     -- key (in SQL an auto-increment id).
-    insert :: (MonadBackend m ~ EntityBackend record, PersistEntity record)
-           => record -> m (Key record)
+    insert :: (PersistEntity record, KeyType record ~ DbSpecific)
+           => record -> m (IKey record)
 
     -- | Same as 'insert', but doesn't return a key.
-    insert_ :: (MonadBackend m ~ EntityBackend record, PersistEntity record)
+    insert_ :: (PersistEntity record, KeyType record ~ DbSpecific)
             => record -> m ()
     insert_ val = insert val >> return ()
 
     -- | Create multiple records in the database.
     -- SQL backends currently use the slow default implementation of
     -- @mapM insert@
-    insertMany :: (MonadBackend m ~ EntityBackend record, PersistEntity record)
-                => [record] -> m [Key record]
+    insertMany :: (PersistEntity record, KeyType record ~ DbSpecific)
+                => [record] -> m [IKey record]
     insertMany = mapM insert
 
     -- | Create a new record in the database using the given key.
-    insertKey :: (MonadBackend m ~ EntityBackend record, PersistEntity record)
-              => Key record -> record -> m ()
+    insertKey :: (PersistEntity record, KeyType record ~ DbSpecific)
+              => IKey record -> record -> m ()
 
     -- | Put the record in the database with the given key.
     -- Unlike 'replace', if a record with the given key does not
     -- exist then a new record will be inserted.
-    repsert :: (MonadBackend m ~ EntityBackend record, PersistEntity record, Show (Key record))
-            => Key record -> record -> m ()
+    repsert :: (PersistEntity record, KeyType record ~ DbSpecific)
+            => IKey record -> record -> m ()
 
     -- | Replace the record in the database with the given
     -- key. Note that the result is undefined if such record does
     -- not exist, so you must use 'insertKey or 'repsert' in
     -- these cases.
-    replace :: (MonadBackend m ~ EntityBackend record, PersistEntity record)
+    replace :: (PersistEntity record)
             => Key record -> record -> m ()
 
     -- | Delete a specific record by identifier. Does nothing if record does
     -- not exist.
-    delete :: (MonadBackend m ~ EntityBackend record, PersistEntity record)
+    delete :: (PersistEntity record)
            => Key record -> m ()
 
 -- | Same as get, but for a non-null (not Maybe) foreign key
 --   Unsafe unless your database is enforcing that the foreign key is valid
-getJust :: (PersistStore m, PersistEntity record, Show (Key record), MonadBackend m ~ EntityBackend record) => Key record -> m record
+getJust :: (PersistStore m, PersistEntity record) => Key record -> m record
 getJust key = get key >>= maybe
   (liftIO $ throwIO $ KeyNotFound $ Prelude.show key)
   return
@@ -97,8 +97,6 @@ belongsTo ::
   (PersistStore m
   , PersistEntity ent1
   , PersistEntity ent2
-  , MonadBackend m ~ EntityBackend ent2
-  , Show (Key ent2)
   ) => (ent1 -> Maybe (Key ent2)) -> ent1 -> m (Maybe ent2)
 belongsTo foreignKeyField model = case foreignKeyField model of
     Nothing -> return Nothing
@@ -108,9 +106,7 @@ belongsTo foreignKeyField model = case foreignKeyField model of
 belongsToJust ::
   (PersistStore m
   , PersistEntity ent1
-  , PersistEntity ent2
-  , MonadBackend m ~ EntityBackend ent2
-  , Show (Key ent2))
+  , PersistEntity ent2)
   => (ent1 -> Key ent2) -> ent1 -> m ent2
 belongsToJust getForeignKey model = getJust $ getForeignKey model
 

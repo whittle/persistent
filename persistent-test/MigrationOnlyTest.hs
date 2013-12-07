@@ -51,7 +51,7 @@ Referencing
 |]
 
 specs :: Spec
-specs = describe "migration only" $ do
+specs = describe "migration only" $
     it "works" $ asIO $ runResourceT $ runConn $ do
 #ifndef WITH_MONGODB
         _ <- runMigrationSilent migrateAll1
@@ -61,7 +61,7 @@ specs = describe "migration only" $ do
         tid <- insert tf
         mtf <- get tid
         liftIO $ mtf @?= Just tf
-        deleteWhere ([] :: [Filter TwoField])
+        deleteWhere ([] :: [Filter BackendMonad TwoField])
 
 asIO :: IO a -> IO a
 asIO = id

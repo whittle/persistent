@@ -106,7 +106,7 @@ instance PersistField a => RawSql (Single a) where
     rawSqlProcessRow _     = Left $ pack "RawSql (Single a): wrong number of columns."
 
 instance (PersistEntity record, PersistField (Key record)) => RawSql (Entity record) where
-    rawSqlCols escape = ((+1) . length . entityFields &&& process) . entityDef . Just . entityVal
+    rawSqlCols escape = ((+1) . length . entityFields &&& process) . entityDef . entityVal
         where
           process ed = (:[]) $
                        intercalate ", " $

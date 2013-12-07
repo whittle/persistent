@@ -110,8 +110,8 @@ sortMigrations x =
     isCreate t = pack "CREATe " `isPrefixOf` t
 
 migrate :: MonadSqlPersist m
-        => [EntityDef SqlType]
-        -> EntityDef SqlType
+        => [EntityDef]
+        -> EntityDef
         -> Migration m
 migrate allDefs val = do
     conn <- askSqlConn

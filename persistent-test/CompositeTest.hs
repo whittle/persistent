@@ -218,12 +218,12 @@ specs = describe "composite" $
       matchCitizenAddressK kca1 @== matchCitizenAddressK newkca1
       ca1 @== newca1
 
-matchK :: (PersistEntity record, PersistField a) => KeyBackend backend record -> Either Text a
+matchK :: (PersistEntity record, PersistField a) => Key record -> Either Text a
 matchK = fromPersistValue . persistKeyToPersistValue
 
 matchK2 :: (PersistEntity record, PersistEntity record2, PersistField a1, PersistField a)
-        => KeyBackend backend record
-        -> KeyBackend backend1 record2 -> Either Text (a1, a)
+        => Key record
+        -> Key record2 -> Either Text (a1, a)
 matchK2 k1 k2 = (,) <$> matchK k1 <*> matchK k2
 
 matchParentK :: Key TestParent -> Either Text (String, String, Int64)

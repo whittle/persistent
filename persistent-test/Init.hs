@@ -4,8 +4,8 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleContexts, FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances, TypeFamilies #-}
 module Init (
   (@/=), (@==), (==@)
   , assertNotEqual
@@ -194,5 +194,5 @@ instance Arbitrary PersistValue where
     arbitrary = PersistInt64 `fmap` choose (0, maxBound)
 #endif
 
-instance PersistEntity record => Arbitrary (Key record) where
+instance (KeyType record ~ typ, PersistEntity record) => Arbitrary (PKey record typ) where
   arbitrary = persistValueToPersistKey `fmap` arbitrary

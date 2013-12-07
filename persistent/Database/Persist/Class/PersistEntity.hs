@@ -3,13 +3,16 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleInstances, FlexibleContexts #-}
+{-# LANGUAGE EmptyDataDecls, TypeSynonymInstances #-}
 module Database.Persist.Class.PersistEntity
     ( PersistEntity (..)
+    , Key
+    , IKey
+    , DbSpecific
     , Update (..)
     , SelectOpt (..)
     , BackendSpecificFilter
     , Filter (..)
-    , KeyBackend
     , Entity (..)
 
     , keyValueEntityToJSON, keyValueEntityFromJSON
@@ -37,29 +40,35 @@ import Data.Monoid (mappend)
 --
 -- Some advanced type system capabilities are used to make this process type-safe.
 -- Normal usage of the persistent API does not require understanding the class associated data and functions.
-class PersistField record => PersistEntity record where
+class (PersistField record) => PersistEntity record where
     -- | An 'EntityField' is parameterised by the Haskell record it belongs to
     -- and the additional type of that field
     data EntityField record :: * -> *
 
     -- | return meta-data for a given 'EntityField'
-    persistFieldDef :: EntityField record typ -> FieldDef SqlType
+    persistFieldDef :: EntityField record typ -> FieldDef
 
-    -- | Persistent allows multiple different backends
-    type EntityBackend record
+    -- | The type of the primary key (PKey)
+    -- Could be a key generated on insert (IKey) or a unique key (Unique).
+    type KeyType record
 
-    data Key record
+    -- | The primary key for this record
+    data PKey record keytype
     persistValueToPersistKey :: PersistValue -> Key record
     persistKeyToPersistValue :: Key record -> PersistValue
 
-    -- | retrieve the EntityDef meta-data for the record
-    entityDef :: Monad m => m record -> EntityDef SqlType
+    -- | The key type generated on insertion.
+    -- For example, an autoincrement key.
+    -- If the entity does not have such key, IKey record = ().
+    -- Different for each backend
+    {-
+    type IKey record
+    data IKey record
+    ikeyFromPKey :: (KeyType record ~ keytype) => PKey record keytype -> IKey record
+    ikeyToPKey   :: (KeyType record ~ keytype) => IKey record -> PKey record keytype
+    -}
 
-    -- | Get the database fields of a record
-    toPersistFields :: record -> [SomePersistField]
-
-    -- | Convert from database values to a Haskell record
-    fromPersistValues :: [PersistValue] -> Either Text record
+    persistIdField :: EntityField record (Key record)
 
     -- | Unique keys besided the Key
     data Unique record
@@ -68,31 +77,39 @@ class PersistField record => PersistEntity record where
     persistUniqueToValues :: Unique record -> [PersistValue]
     persistUniqueKeys :: record -> [Unique record]
 
-    persistIdField :: EntityField record (Key record)
+    -- | retrieve the EntityDef meta-data for the record
+    entityDef :: record -> EntityDef
+
+    -- | Get the database fields of a record
+    toPersistFields :: record -> [SomePersistField]
+
+    -- | Convert from database values to a Haskell record
+    fromPersistValues :: [PersistValue] -> Either Text record
 
     fieldLens :: EntityField record field
               -> (forall f. Functor f => (field -> f field) -> Entity record -> f (Entity record))
 
-instance Eq       (Key record)
-instance Ord      (Key record)
-instance Read     (Key record)
-instance Show     (Key record)
-instance PersistEntity record => ToJSON   (Key record) where
-    toJSON = toJSON . persistKeyToPersistValue
-instance PersistEntity record => FromJSON (Key record) where
-    parseJSON = fmap persistValueToPersistKey . parseJSON
- 
-type KeyBackend backend record = Key record
+-- | A simpler way to refer to the PKey
+type Key record = PKey record (KeyType record)
+type IKey record = PKey record DbSpecific
 
-
-
--- deriving instance Eq (KeyBackend backend record)
--- deriving instance Ord (Key record) - , Read, Show)
-
-instance PersistEntity record => PersistField (Key record) where
+instance (PersistEntity record, KeyType record ~ typ) =>
+  PersistField (PKey record typ) where
     toPersistValue = persistKeyToPersistValue
     fromPersistValue = Right . persistValueToPersistKey
 
+instance KeyType record ~ typ => Eq   (PKey record typ)
+instance KeyType record ~ typ => Ord  (PKey record typ)
+instance KeyType record ~ typ => Read (PKey record typ)
+instance KeyType record ~ typ => Show (PKey record typ)
+
+instance (KeyType record ~ typ, PersistEntity record) => ToJSON (PKey record typ) where
+    toJSON = toJSON . persistKeyToPersistValue
+instance (KeyType record ~ typ, PersistEntity record) => FromJSON (PKey record typ) where
+    parseJSON = fmap persistValueToPersistKey . parseJSON
+
+-- | Used for marking the primary key
+data DbSpecific
 
 -- | updataing a database entity
 --
@@ -120,15 +137,15 @@ type family BackendSpecificFilter backend record
 -- and the argument for the comparison.
 --
 -- Persistent users use combinators to create these
-data Filter record = forall typ. PersistField typ => Filter
+data Filter backend record = forall typ. PersistField typ => Filter
     { filterField  :: EntityField record typ
     , filterValue  :: Either typ [typ] -- FIXME
     , filterFilter :: PersistFilter -- FIXME
     }
-    | FilterAnd [Filter record] -- ^ convenient for internal use, not needed for the API
-    | FilterOr  [Filter record]
+    | FilterAnd [Filter backend record] -- ^ convenient for internal use, not needed for the API
+    | FilterOr  [Filter backend record]
     | BackendFilter
-          (BackendSpecificFilter (EntityBackend record) record)
+          (BackendSpecificFilter backend record)
 
 -- | Datatype that represents an entity, with both its 'Key' and
 -- its Haskell record representation.
@@ -174,7 +191,7 @@ data Entity record =
 --   instance ToJSON User where
 --       toJSON = keyValueEntityToJSON
 -- @
-keyValueEntityToJSON :: (ToJSON e, ToJSON (Key e)) => Entity e -> Value
+keyValueEntityToJSON :: (ToJSON record, ToJSON (Key record)) => Entity record -> Value
 keyValueEntityToJSON (Entity key value) = object
     [ "key" .= key
     , "value" .= value

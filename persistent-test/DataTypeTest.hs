@@ -58,8 +58,8 @@ DataTypeTable no-json
     zonedTime ZonedTime
 |]
 
-cleanDB :: (PersistQuery m, MonadBackend m ~ EntityBackend DataTypeTable) => m ()
-cleanDB = deleteWhere ([] :: [Filter DataTypeTable])
+cleanDB :: (PersistQuery m) => m ()
+cleanDB = deleteWhere ([] :: [Filter BackendMonad DataTypeTable])
 
 specs :: Spec
 specs = describe "data type specs" $
@@ -118,7 +118,7 @@ randomValues = do
   g <- newStdGen
   return $ map (unGen arbitrary g) [0..]
 
-instance Arbitrary (DataTypeTableGeneric g) where
+instance Arbitrary (DataTypeTable) where
   arbitrary = DataTypeTable
      <$> arbText                -- text
      <*> arbText                -- textManLen

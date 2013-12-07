@@ -40,13 +40,13 @@ data InsertSqlResult = ISRSingle Text
 data Connection = Connection
     { connPrepare :: Text -> IO Statement
     -- | table name, column names, id name, either 1 or 2 statements to run
-    , connInsertSql :: EntityDef SqlType -> [PersistValue] -> InsertSqlResult
+    , connInsertSql :: EntityDef -> [PersistValue] -> InsertSqlResult
     , connStmtMap :: IORef (Map Text Statement)
     , connClose :: IO ()
     , connMigrateSql
-        :: [EntityDef SqlType]
+        :: [EntityDef]
         -> (Text -> IO Statement)
-        -> EntityDef SqlType
+        -> EntityDef
         -> IO (Either [Text] [(Bool, Text)])
     , connBegin :: (Text -> IO Statement) -> IO ()
     , connCommit :: (Text -> IO Statement) -> IO ()
@@ -122,6 +122,7 @@ type Migration m = WriterT [Text] (WriterT CautiousMigration m) ()
 
 type ConnectionPool = Pool Connection
 
+{-
 -- TODO: handle more key types
 instance PersistEntity (record) => PathPiece (KeyBackend SqlBackend record) where
     toPathPiece = toPathPiece . persistKeyToPersistValue
@@ -130,6 +131,7 @@ instance PersistEntity (record) => PathPiece (KeyBackend SqlBackend record) wher
         case Data.Text.Read.signed Data.Text.Read.decimal t of
             Right (i, t') | T.null t' -> Just $ persistValueToPersistKey $ PersistInt64 i
             _ -> Nothing
+            -}
 
 -- $rawSql
 --

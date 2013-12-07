@@ -58,12 +58,12 @@ instance (C.MonadResource m, MonadLogger m) => PersistStore (SqlPersistT m) wher
                             in persistValueToPersistKey (PersistList keyvals)
 
       where
-        t = entityDef $ Just val
+        t = entityDef val
         vals = map toPersistValue $ toPersistFields val
 
     replace k val = do
         conn <- askSqlConn
-        let t = entityDef $ Just val
+        let t = entityDef val
         let sql = T.concat
                 [ "UPDATE "
                 , connEscapeName conn (entityDB t)
@@ -78,7 +78,7 @@ instance (C.MonadResource m, MonadLogger m) => PersistStore (SqlPersistT m) wher
       where
         go conn x = connEscapeName conn x `T.append` "=?"
 
-    insertKey = insrepHelper "INSERT"
+    insertKey k = insrepHelper "INSERT" k
 
     repsert key value = do
         mExisting <- get key
@@ -127,11 +127,11 @@ instance (C.MonadResource m, MonadLogger m) => PersistStore (SqlPersistT m) wher
             , wher conn
             ]
 
-dummyFromKey :: Key v -> Maybe v
-dummyFromKey _ = Nothing
+dummyFromKey :: Key v -> v
+dummyFromKey = undefined
 
 insrepHelper :: ( MonadIO m,  MonadLogger m, MonadSqlPersist m
-               , PersistEntity record, EntityBackend record ~ SqlBackend
+               , PersistEntity record
                )
              => Text
              -> Key record
@@ -141,7 +141,7 @@ insrepHelper command k val = do
     conn <- askSqlConn
     rawExecute (sql conn) vals
   where
-    t = entityDef $ Just val
+    t = entityDef val
     sql conn = T.concat
         [ command
         , " INTO "

@@ -65,5 +65,5 @@ instance (MonadResource m, MonadLogger m) => PersistUnique (SqlPersistT m) where
         t = entityDef $ dummyFromUnique uniq
         toFieldNames' = map snd . persistUniqueToFieldNames
 
-dummyFromUnique :: Unique v -> Maybe v
-dummyFromUnique _ = Nothing
+dummyFromUnique :: Unique v -> v
+dummyFromUnique = undefined

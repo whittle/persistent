@@ -19,6 +19,7 @@ import qualified Data.Text as T
 import System.Random (randomIO, randomRIO, Random)
 import Control.Applicative ((<$>))
 import Control.Monad.Trans.Resource (runResourceT)
+import Control.Monad (replicateM, replicateM_)
 
 import Init
 import Text.Blaze.Html
@@ -31,11 +32,11 @@ HtmlTable
     deriving
 |]
 
-cleanDB :: (PersistQuery m, EntityBackend HtmlTable ~ MonadBackend m) => m ()
-cleanDB = deleteWhere ([] :: [Filter HtmlTable])
+cleanDB :: (PersistQuery m) => m ()
+cleanDB = deleteWhere ([] :: [Filter BackendMonad HtmlTable])
 
 specs :: Spec
-specs = describe "html" $ do
+specs = describe "html" $
     it "works" $ asIO $ runResourceT $ runConn $ do
 #ifndef WITH_MONGODB
         _ <- runMigrationSilent htmlMigrate
@@ -43,11 +44,11 @@ specs = describe "html" $ do
         _ <- runMigrationSilent htmlMigrate
 #endif
 
-        sequence_ $ replicate 1000 $ do
+        replicateM_ 1000 $ do
             x <- liftIO randomValue
             key <- insert $ HtmlTable x
             Just (HtmlTable y) <- get key
-            liftIO $ do
+            liftIO $
                 renderHtml x @?= renderHtml y
 
 randomValue :: IO Html
@@ -66,4 +67,4 @@ asIO = id
 randomIOs :: Random a => IO [a]
 randomIOs = do
     len <- randomRIO (0, 20)
-    sequence $ replicate len randomIO
+    replicateM len randomIO

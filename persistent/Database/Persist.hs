@@ -19,7 +19,6 @@ module Database.Persist
       -- * Other utililities
     , limitOffsetOrder
 
-    , KeyBackend
     ) where
 
 import Database.Persist.Types
@@ -46,7 +45,7 @@ f /=. a = Update f a Divide
 
 infix 4 ==., <., <=., >., >=., !=.
 (==.), (!=.), (<.), (<=.), (>.), (>=.) ::
-  forall v typ.  PersistField typ => EntityField v typ -> typ -> Filter v
+  forall db record typ.  PersistField typ => EntityField record typ -> typ -> Filter db record
 f ==. a  = Filter f (Left a) Eq
 f !=. a = Filter f (Left a) Ne
 f <. a  = Filter f (Left a) Lt
@@ -55,14 +54,14 @@ f >. a  = Filter f (Left a) Gt
 f >=. a  = Filter f (Left a) Ge
 
 infix 4 <-., /<-.
-(<-.), (/<-.) :: forall v typ.  PersistField typ => EntityField v typ -> [typ] -> Filter v
+(<-.), (/<-.) :: forall db record typ.  PersistField typ => EntityField record typ -> [typ] -> Filter db record
 -- | In
 f <-. a = Filter f (Right a) In
 -- | NotIn
 f /<-. a = Filter f (Right a) NotIn
 
 infixl 3 ||.
-(||.) :: forall v. [Filter v] -> [Filter v] -> [Filter v]
+(||.) :: forall db record. [Filter db record] -> [Filter db record] -> [Filter db record]
 -- | the OR of two lists of filters
 a ||. b = [FilterOr  [FilterAnd a, FilterAnd b]]
 
