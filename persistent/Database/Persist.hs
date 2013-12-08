@@ -45,7 +45,7 @@ f /=. a = Update f a Divide
 
 infix 4 ==., <., <=., >., >=., !=.
 (==.), (!=.), (<.), (<=.), (>.), (>=.) ::
-  forall db record typ.  PersistField typ => EntityField record typ -> typ -> Filter db record
+  forall db record typ.  PersistField typ => EntityField record typ -> typ -> Filter record db
 f ==. a  = Filter f (Left a) Eq
 f !=. a = Filter f (Left a) Ne
 f <. a  = Filter f (Left a) Lt
@@ -54,14 +54,14 @@ f >. a  = Filter f (Left a) Gt
 f >=. a  = Filter f (Left a) Ge
 
 infix 4 <-., /<-.
-(<-.), (/<-.) :: forall db record typ.  PersistField typ => EntityField record typ -> [typ] -> Filter db record
+(<-.), (/<-.) :: forall db record typ.  PersistField typ => EntityField record typ -> [typ] -> Filter record db
 -- | In
 f <-. a = Filter f (Right a) In
 -- | NotIn
 f /<-. a = Filter f (Right a) NotIn
 
 infixl 3 ||.
-(||.) :: forall db record. [Filter db record] -> [Filter db record] -> [Filter db record]
+(||.) :: forall db record. [Filter record db] -> [Filter record db] -> [Filter record db]
 -- | the OR of two lists of filters
 a ||. b = [FilterOr  [FilterAnd a, FilterAnd b]]
 

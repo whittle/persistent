@@ -105,7 +105,7 @@ instance PersistField a => RawSql (Single a) where
     rawSqlProcessRow [pv]  = Single <$> fromPersistValue pv
     rawSqlProcessRow _     = Left $ pack "RawSql (Single a): wrong number of columns."
 
-instance (PersistEntity record, PersistField (Key record)) => RawSql (Entity record) where
+instance (PersistEntity record, PersistField (Key record db)) => RawSql (Entity record db) where
     rawSqlCols escape = ((+1) . length . entityFields &&& process) . entityDef . entityVal
         where
           process ed = (:[]) $
@@ -120,7 +120,7 @@ instance (PersistEntity record, PersistField (Key record)) => RawSql (Entity rec
         case fst (rawSqlCols (error "RawSql") a) of
           1 -> "one column for an 'Entity' data type without fields"
           n -> show n ++ " columns for an 'Entity' data type"
-    rawSqlProcessRow (idCol:ent) = Entity <$> fromPersistValue idCol
+    rawSqlProcessRow (idCol:ent) = Entity <$> (Right $ persistValueToPersistKey idCol)
                                           <*> fromPersistValues ent
     rawSqlProcessRow _ = Left "RawSql (Entity a): wrong number of columns."
 
@@ -315,5 +315,5 @@ instance PersistFieldSql Rational where
 
 -- perhaps a SQL user can figure this sqlType out?
 -- It is really intended for MongoDB though.
-instance PersistField (Entity record) => PersistFieldSql (Entity record) where
+instance PersistField (Entity record db) => PersistFieldSql (Entity record db) where
     sqlType _ = SqlOther "embedded entity, hard to type"

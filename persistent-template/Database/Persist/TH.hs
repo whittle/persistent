@@ -64,6 +64,7 @@ import Data.Aeson
 import Control.Applicative (pure, (<*>))
 import Control.Monad.Logger (MonadLogger)
 import Database.Persist.Sql (sqlType)
+import Data.Int (Int64)
 
 {-
 readMay :: Read a => String -> Maybe a
@@ -349,7 +350,7 @@ idType :: MkPersistSettings -> FieldType -> Type
 idType mps typ =
     case stripId typ of
         Just typ' ->
-            ConT ''Key `AppT` ConT (mkName typ')
+            ConT ''Key `AppT` ConT (mkName typ') `AppT` dbType
         Nothing -> ftToType typ
 
 degen :: [Clause] -> [Clause]
@@ -448,30 +449,17 @@ mkToValue func = FunD (Language.Haskell.TH.Syntax.mkName func) . degen . map go
                    []
 -}
 
+
 isNotNull :: PersistValue -> Bool
 isNotNull PersistNull = False
 isNotNull _ = True
 
-
-{-
-[d| data $keyName backend where
-      $(keyName ++ "Sql") :: PersistField ($keyName SqlBackend) => Int64 -> $keyName SqlBackend
-|]
-instance PersistField (BackendKey SqlBackend) where
-  toPersistValue   (SqlKey i)       = PersistInt64 i
-  fromPersistValue (PersistInt64 i) = Right (SqlKey i)
-  -}
---
--- data KeyBackend backend (Contact) = ContactKey !Int64
 mkAssociatedKey :: MkPersistSettings -> EntityDef -> Q [Dec]
 mkAssociatedKey mps t = do
   let keyText = entName t `mappend` "Key"
   let keyName = mkName keyText
   let keyType = VarT $ mkName "keyTyp"
 
-  let autoKey = [ForallC [] [EqualP keyType (ConT ''DbSpecific)] $ NormalC keyName [(NotStrict, ConT ''PersistValue)]]
-
-  let ikey = ConT ''DbSpecific
   let recordType = entityType t
   insideKeyName <- newName "x"
   fpv <- [| \x -> case fromPersistValue x of
@@ -480,15 +468,26 @@ mkAssociatedKey mps t = do
         |]
   tpv <- [| toPersistValue $(return $ VarE insideKeyName) |]
   return
-        [ TySynInstD (mkName "KeyType") [recordType] ikey
-        -- , DataInstD [] ''IKey [ recordType ] [NormalC (mkName $ "I" `mappend` keyText) [(IsStrict, ConT ''PersistValue)]] []
-        , DataInstD [] ''PKey [ recordType, keyType ] autoKey []
+        [
+          TySynInstD ''IKeyType [recordType, dbType] (ConT ''BackendKey `AppT` dbType)
+        -- TODO composite keys
+        , DataInstD [] ''IKey [ recordType, dbType ] [NormalC keyName [(IsStrict, ConT ''BackendKey `AppT` dbType)]] []
+        , TySynInstD (mkName "Key") [recordType, dbType] (ConT ''IKey `AppT` recordType `AppT` dbType)
+ 
+        ,  FunD 'mkIKey [ Clause [] (NormalB $ ConE keyName) []]
+        ,  FunD 'fromIKey [ Clause 
+             [ConP keyName [VarP insideKeyName]]
+             (NormalB $ VarE insideKeyName)
+             []
+           ]
+           {-
         ,  FunD 'persistValueToPersistKey [ Clause [] (NormalB fpv) []]
         ,  FunD 'persistKeyToPersistValue [ Clause
              [ConP keyName [VarP insideKeyName]]
              (NormalB tpv)
              []
            ]
+           -}
         ]
 
 entId :: EntityDef -> Text
@@ -565,11 +564,13 @@ mkLensClauses mps t = do
             [ConP (mkName $ entId t) []]
             (NormalB $ lens' `AppE` getId `AppE` setId)
             []
-    if entitySum t
-        then return $ idClause : map (toSumClause lens' keyName valName xName) (entityFields t)
-        else return $ idClause : map (toClause lens' getVal dot keyName valName xName) (entityFields t)
+    return $ flip map (entityFields t) $
+      if entitySum t
+        then toSumClause lens' keyName valName xName
+        else toNormalClause lens' getVal dot keyName valName xName
+        
   where
-    toClause lens' getVal dot keyName valName xName f = Clause
+    toNormalClause lens' getVal dot keyName valName xName f = Clause
         [ConP (filterConName mps t f) []]
         (NormalB $ lens' `AppE` getter `AppE` setter)
         []
@@ -604,6 +605,9 @@ mkLensClauses mps t = do
             ]
             $ ConE 'Entity `AppE` VarE keyName `AppE` (ConE (sumConstrName mps t f) `AppE` VarE xName)
 
+dbName :: Name; dbName = mkName "db"
+dbType :: Type; dbType = VarT dbName
+
 mkEntity :: MkPersistSettings -> EntityDef -> Q [Dec]
 mkEntity mps t = do
     t' <- lift t
@@ -615,7 +619,7 @@ mkEntity mps t = do
     puk <- mkUniqueKeys t
     fkc <- mapM (mkForeignKeysComposite mps t) $ entityForeigns t
     
-    fields <- mapM (mkField mps t) $ FieldDef
+    fields <- mapM (mkField mps t) $ {- FieldDef
         { fieldHaskell = HaskellName "Id"
         , fieldDB = entityID t
         , fieldType = FTTypeCon Nothing (entId t)
@@ -624,15 +628,15 @@ mkEntity mps t = do
         , fieldAttrs = []
         , fieldStrict = True
         }
-        : entityFields t
+        :-}  entityFields t
     toFieldNames <- mkToFieldNames $ entityUniques t
 
     lensClauses <- mkLensClauses mps t
 
     return $
        dataTypeDec mps t : mconcat fkc `mappend`
-      ([ TySynD idName [] $
-            ConT ''Key `AppT` ConT (entNameName t)
+      ([ TySynD idName [PlainTV dbName] $
+            ConT ''Key `AppT` ConT (entNameName t) `AppT` dbType
       , InstanceD [
           -- ClassP ''PersistField [backendKeyType]
       ] clazz $
@@ -655,7 +659,7 @@ mkEntity mps t = do
             (map fst fields)
             []
         , FunD 'persistFieldDef (map snd fields)
-        , FunD 'persistIdField [Clause [] (NormalB $ ConE idName) []]
+        -- , FunD 'persistIdField [Clause [] (NormalB $ ConE idName) []]
         , FunD 'fieldLens lensClauses
         ]
       ])
@@ -675,7 +679,7 @@ mkForeignKeysComposite mps t fdef = do
    let xs = ListE $ map (\a -> AppE (VarE 'toPersistValue) ((AppE a (VarE eName)))) flds
    let fn = FunD fname [Clause [VarP eName] (NormalB (AppE (VarE 'persistValueToPersistKey) (AppE (ConE 'PersistList) xs))) []]
    
-   let keybackend = ConT ''Key `AppT` ConT reftablename
+   let keybackend = ConT ''IKey `AppT` ConT reftablename `AppT` dbType
    let sig = SigD fname $ (ArrowT `AppT` (ConT tablename)) `AppT` keybackend
    return [sig, fn]
 
@@ -1052,7 +1056,7 @@ mkField mps et cd = do
         case stripId $ fieldType cd of
             Just ft ->
                  ConT ''Key
-                    `AppT` ConT (mkName ft)
+                    `AppT` ConT (mkName ft) `AppT` dbType
             Nothing -> ftToType $ fieldType cd
 
 filterConName :: MkPersistSettings
@@ -1138,9 +1142,9 @@ mkJSON mps def = do
         Just entityJSON -> do
             let pureTyp = pure typ
             entityJSONIs <- [d|
-                instance ToJSON (Entity $pureTyp) where
+                instance ToJSON (Entity $pureTyp db) where
                     toJSON = $(varE (entityToJSON entityJSON))
-                instance FromJSON (Entity $pureTyp) where
+                instance FromJSON (Entity $pureTyp db) where
                     parseJSON = $(varE (entityFromJSON entityJSON))
                 |]
             return $ toJSONI : fromJSONI : entityJSONIs

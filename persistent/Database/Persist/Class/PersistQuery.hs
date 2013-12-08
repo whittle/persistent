@@ -38,67 +38,66 @@ import Database.Persist.Class.PersistEntity
 
 class PersistStore m => PersistQuery m where
     -- | Update individual fields on a specific record.
-    update :: (PersistEntity val)
-           => Key val -> [Update val] -> m ()
+    update :: (PersistEntity record, MonadDb m ~ db)
+           => IKey record db -> [Update record] -> m ()
 
     -- | Update individual fields on a specific record, and retrieve the
     -- updated value from the database.
     --
     -- Note that this function will throw an exception if the given key is not
     -- found in the database.
-    updateGet :: ( PersistEntity val
-                , Show (Key val))
-              => Key val -> [Update val] -> m val
+    updateGet :: (PersistEntity record, MonadDb m ~ db)
+              => IKey record db -> [Update record] -> m record
     updateGet key ups = do
         update key ups
         get key >>= maybe (liftIO $ throwIO $ KeyNotFound $ show key) return
 
     -- | Update individual fields on any record matching the given criterion.
-    updateWhere :: (PersistEntity val)
-                => [Filter db val] -> [Update val] -> m ()
+    updateWhere :: (PersistEntity record, MonadDb m ~ db)
+                => [Filter record db] -> [Update record] -> m ()
 
     -- | Delete all records matching the given criterion.
-    deleteWhere :: (PersistEntity val)
-                => [Filter db val] -> m ()
+    deleteWhere :: (PersistEntity record, MonadDb m ~ db)
+                => [Filter record db] -> m ()
 
     -- | Get all records matching the given criterion in the specified order.
     -- Returns also the identifiers.
     selectSource
-           :: (PersistEntity val)
-           => [Filter db val]
-           -> [SelectOpt val]
-           -> C.Source m (Entity val)
+           :: (PersistEntity record, MonadDb m ~ db)
+           => [Filter record db]
+           -> [SelectOpt record]
+           -> C.Source m (Entity record db)
 
     -- | get just the first record for the criterion
-    selectFirst :: (PersistEntity val)
-                => [Filter db val]
-                -> [SelectOpt val]
-                -> m (Maybe (Entity val))
+    selectFirst :: (PersistEntity record, MonadDb m ~ db)
+                => [Filter record db]
+                -> [SelectOpt record]
+                -> m (Maybe (Entity record db))
     selectFirst filts opts = selectSource filts ((LimitTo 1):opts) C.$$ CL.head
 
 
     -- | Get the 'Key's of all records matching the given criterion.
-    selectKeys :: (PersistEntity record)
-               => [Filter db record]
+    selectKeys :: (PersistEntity record, MonadDb m ~ db)
+               => [Filter record db]
                -> [SelectOpt record]
-               -> C.Source m (Key record)
+               -> C.Source m (IKey record db)
 
     -- | The total number of records fulfilling the given criterion.
-    count :: (PersistEntity record)
-          => [Filter db record] -> m Int
+    count :: (PersistEntity record, MonadDb m ~ db)
+          => [Filter record db] -> m Int
 
 -- | Call 'selectSource' but return the result as a list.
-selectList :: (PersistEntity val, PersistQuery m)
-           => [Filter db val]
-           -> [SelectOpt val]
-           -> m [Entity val]
+selectList :: (PersistEntity record, PersistQuery m, MonadDb m ~ db)
+           => [Filter record db]
+           -> [SelectOpt record]
+           -> m [Entity record db]
 selectList a b = selectSource a b C.$$ CL.consume
 
 -- | Call 'selectKeys' but return the result as a list.
-selectKeysList :: (PersistEntity record, PersistQuery m)
-               => [Filter db record]
+selectKeysList :: (PersistEntity record, PersistQuery m, MonadDb m ~ db)
+               => [Filter record db]
                -> [SelectOpt record]
-               -> m [Key record]
+               -> m [IKey record db]
 selectKeysList a b = selectKeys a b C.$$ CL.consume
 
 

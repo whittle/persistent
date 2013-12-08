@@ -3,7 +3,6 @@
 module Database.Persist.Class.PersistUnique
     ( PersistUnique (..)
     , getByValue
-    , insertBy
     , replaceUnique
     , checkUnique
     ) where
@@ -50,38 +49,42 @@ import Database.Persist.Class.PersistEntity
 --  * an exception will automatically abort the current SQL transaction
 class PersistStore m => PersistUnique m where
     -- | Get a record by unique key, if available. Returns also the identifier.
-    getBy :: (PersistEntity record) => Unique record -> m (Maybe (Entity record))
+    getBy :: (PersistEntity record, MonadDb m ~ db)
+          => Unique record -> m (Maybe (Entity record db))
 
     -- | Delete a specific record by unique key. Does nothing if no record
     -- matches.
     deleteBy :: (PersistEntity record) => Unique record -> m ()
 
-    -- | Like 'insert', but returns 'Nothing' when the record
-    -- couldn't be inserted because of a uniqueness constraint.
-    insertUnique :: (PersistEntity record, KeyType record ~ DbSpecific) => record -> m (Maybe (IKey record))
-    insertUnique datum = do
-        conflict <- checkUnique datum
-        case conflict of
-          Nothing -> Just `liftM` insert datum
-          Just _ -> return Nothing
+    -- | Insert a record, checking for conflicts with any unique constraints
+    -- If a duplicate exists in the database, it is returned as 'Left'. Otherwise, the
+    -- new 'Key is returned as 'Right'.
+    insertBy :: (PersistEntity record, PersistUnique m, MonadDb m ~ db)
+              => record -> m (Either (Entity record db) (IKey record db))
+    insertBy val = do
+        res <- getByValue val
+        case res of
+          Nothing -> Right `liftM` insert val
+          Just z -> return $ Left z
 
--- | Insert a record, checking for conflicts with any unique constraints
--- If a duplicate exists in the database, it is returned as 'Left'. Otherwise, the
--- new 'Key is returned as 'Right'.
-insertBy :: (PersistEntity record, PersistUnique m, KeyType record ~ DbSpecific)
-         => record -> m (Either (Entity record) (IKey record))
-insertBy val = do
-    res <- getByValue val
-    case res of
-      Nothing -> Right `liftM` insert val
-      Just z -> return $ Left z
+    -- | Like 'insertBy', but uses 'insert_' and returns Nothing
+    -- When the record cannot be inserted due to a uniqueness constraint
+    -- it returns the conflicting Entity
+    insertBy_ :: (PersistEntity record, MonadDb m ~ db)
+              => record -> m (Maybe (Entity record db))
+    insertBy_ record = do
+        res <- getByValue record
+        case res of
+          Nothing -> insert_ record >> return Nothing
+          Just ent -> return $ Just ent
+
 
 -- | A modification of 'getBy', which takes the 'PersistEntity' itself instead
 -- of a 'Unique' value. Returns a value matching /one/ of the unique keys. This
 -- function makes the most sense on entities with a single 'Unique'
 -- constructor.
-getByValue :: (PersistEntity record, PersistUnique m, KeyType record ~ DbSpecific)
-           => record -> m (Maybe (Entity record))
+getByValue :: (PersistEntity record, PersistUnique m, MonadDb m ~ db)
+           => record -> m (Maybe (Entity record db))
 getByValue = checkUniques . persistUniqueKeys
   where
     checkUniques [] = return Nothing
@@ -98,8 +101,10 @@ getByValue = checkUniques . persistUniqueKeys
 -- If uniqueness is violated, return a 'Just' with the 'Unique' violation
 --
 -- Since 1.2.2.0
-replaceUnique :: (Eq record, Eq (Unique record), PersistEntity record, PersistStore m, PersistUnique m, Show (Key record))
-              => Key record -> record -> m (Maybe (Unique record))
+replaceUnique :: (Eq record, Eq (Unique record), PersistEntity record
+                , PersistStore m, PersistUnique m, MonadDb m ~ db
+                )
+              => IKey record db -> record -> m (Maybe (Unique record))
 replaceUnique key datumNew = getJust key >>= replaceOriginal
   where
     uniqueKeysNew = persistUniqueKeys datumNew
@@ -130,7 +135,7 @@ checkUniqueKeys (x:xs) = do
         Nothing -> checkUniqueKeys xs
         Just _ -> return (Just x)
 
-#define DEF(T) { getBy = lift . getBy; deleteBy = lift . deleteBy; insertUnique = lift . insertUnique }
+#define DEF(T) { getBy = lift . getBy; deleteBy = lift . deleteBy; insertBy_ = lift . insertBy_ }
 #define GO(T) instance (PersistUnique m) => PersistUnique (T m) where DEF(T)
 #define GOX(X, T) instance (X, PersistUnique m) => PersistUnique (T m) where DEF(T)
 

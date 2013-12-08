@@ -39,54 +39,54 @@ import Database.Persist.Class.PersistEntity
 import Database.Persist.Types
 
 class MonadIO m => PersistStore m where
-    type MonadBackend m
+    type MonadDb m
 
     -- | Get a record by identifier, if available.
-    get :: (PersistEntity record)
-        => Key record -> m (Maybe record)
+    get :: (PersistEntity record, MonadDb m ~ db)
+        => IKey record db -> m (Maybe record)
 
     -- | Create a new record in the database, returning an automatically created
     -- key (in SQL an auto-increment id).
-    insert :: (PersistEntity record, KeyType record ~ DbSpecific)
-           => record -> m (IKey record)
+    insert :: (PersistEntity record, MonadDb m ~ db)
+           => record -> m (IKey record db)
 
     -- | Same as 'insert', but doesn't return a key.
-    insert_ :: (PersistEntity record, KeyType record ~ DbSpecific)
+    insert_ :: (PersistEntity record)
             => record -> m ()
     insert_ val = insert val >> return ()
 
     -- | Create multiple records in the database.
     -- SQL backends currently use the slow default implementation of
     -- @mapM insert@
-    insertMany :: (PersistEntity record, KeyType record ~ DbSpecific)
-                => [record] -> m [IKey record]
+    insertMany :: (PersistEntity record, MonadDb m ~ db)
+                => [record] -> m [IKey record db]
     insertMany = mapM insert
 
     -- | Create a new record in the database using the given key.
-    insertKey :: (PersistEntity record, KeyType record ~ DbSpecific)
-              => IKey record -> record -> m ()
+    insertKey :: (PersistEntity record, MonadDb m ~ db)
+              => IKey record db -> record -> m ()
 
     -- | Put the record in the database with the given key.
     -- Unlike 'replace', if a record with the given key does not
     -- exist then a new record will be inserted.
-    repsert :: (PersistEntity record, KeyType record ~ DbSpecific)
-            => IKey record -> record -> m ()
+    repsert :: (PersistEntity record, MonadDb m ~ db)
+            => IKey record db -> record -> m ()
 
     -- | Replace the record in the database with the given
     -- key. Note that the result is undefined if such record does
     -- not exist, so you must use 'insertKey or 'repsert' in
     -- these cases.
-    replace :: (PersistEntity record)
-            => Key record -> record -> m ()
+    replace :: (PersistEntity record, MonadDb m ~ db)
+            => IKey record db -> record -> m ()
 
     -- | Delete a specific record by identifier. Does nothing if record does
     -- not exist.
     delete :: (PersistEntity record)
-           => Key record -> m ()
+           => IKey record db -> m ()
 
 -- | Same as get, but for a non-null (not Maybe) foreign key
 --   Unsafe unless your database is enforcing that the foreign key is valid
-getJust :: (PersistStore m, PersistEntity record) => Key record -> m record
+getJust :: (PersistStore m, PersistEntity record, MonadDb m ~ db) => IKey record db -> m record
 getJust key = get key >>= maybe
   (liftIO $ throwIO $ KeyNotFound $ Prelude.show key)
   return
@@ -94,23 +94,23 @@ getJust key = get key >>= maybe
 -- | curry this to make a convenience function that loads an associated model
 --   > foreign = belongsTo foreignId
 belongsTo ::
-  (PersistStore m
+  (PersistStore m, MonadDb m ~ db
   , PersistEntity ent1
   , PersistEntity ent2
-  ) => (ent1 -> Maybe (Key ent2)) -> ent1 -> m (Maybe ent2)
+  ) => (ent1 -> Maybe (IKey ent2 db)) -> ent1 -> m (Maybe ent2)
 belongsTo foreignKeyField model = case foreignKeyField model of
     Nothing -> return Nothing
     Just f -> get f
 
 -- | same as belongsTo, but uses @getJust@ and therefore is similarly unsafe
 belongsToJust ::
-  (PersistStore m
+  (PersistStore m, MonadDb m ~ db
   , PersistEntity ent1
   , PersistEntity ent2)
-  => (ent1 -> Key ent2) -> ent1 -> m ent2
+  => (ent1 -> IKey ent2 db) -> ent1 -> m ent2
 belongsToJust getForeignKey model = getJust $ getForeignKey model
 
-#define DEF(T) { type MonadBackend (T m) = MonadBackend m; insert = lift . insert; insertKey k = lift . insertKey k; repsert k = lift . repsert k; replace k = lift . replace k; delete = lift . delete; get = lift . get }
+#define DEF(T) { type MonadDb (T m) = MonadDb m; insert = lift . insert; insertKey k = lift . insertKey k; repsert k = lift . repsert k; replace k = lift . replace k; delete = lift . delete; get = lift . get }
 #define GO(T)     instance (PersistStore m)    => PersistStore (T m) where DEF(T)
 #define GOX(X, T) instance (X, PersistStore m) => PersistStore (T m) where DEF(T)
 

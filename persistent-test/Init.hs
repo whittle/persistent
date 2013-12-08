@@ -168,8 +168,7 @@ runConn f = runNoLoggingT $ do
     return ()
 
 db :: SqlPersistT (NoLoggingT (ResourceT IO)) () -> Assertion
-db actions = do
-  runResourceT $ runConn $ actions >> transactionUndo
+db actions = runResourceT $ runConn $ actions >> transactionUndo
 
 #if !MIN_VERSION_random(1,0,1)
 instance Random Int32 where
@@ -194,5 +193,5 @@ instance Arbitrary PersistValue where
     arbitrary = PersistInt64 `fmap` choose (0, maxBound)
 #endif
 
-instance (KeyType record ~ typ, PersistEntity record) => Arbitrary (PKey record typ) where
+instance (PersistEntity record) => Arbitrary (IKey record db) where
   arbitrary = persistValueToPersistKey `fmap` arbitrary

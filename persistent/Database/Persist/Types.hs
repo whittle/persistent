@@ -9,6 +9,7 @@ module Database.Persist.Types
     , Filter (..)
     , Key
     , Entity (..)
+    , BackendKey
     ) where
 
 import Database.Persist.Types.Base

@@ -1,5 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Database.Persist.Sql.Orphan.PersistQuery
     ( deleteWhereCount
@@ -184,8 +185,8 @@ instance (MonadResource m, MonadLogger m) => PersistQuery (SqlPersistT m) where
 -- | Same as 'deleteWhere', but returns the number of rows affected.
 --
 -- Since 1.1.5
-deleteWhereCount :: (PersistEntity val, MonadSqlPersist m)
-                 => [Filter db val]
+deleteWhereCount :: (PersistEntity record, MonadSqlPersist m)
+                 => [Filter record SqlBackend]
                  -> m Int64
 deleteWhereCount filts = do
     conn <- askSqlConn
@@ -203,9 +204,9 @@ deleteWhereCount filts = do
 -- | Same as 'updateWhere', but returns the number of rows affected.
 --
 -- Since 1.1.5
-updateWhereCount :: (PersistEntity val, MonadSqlPersist m)
-                 => [Filter db val]
-                 -> [Update val]
+updateWhereCount :: (PersistEntity record, MonadSqlPersist m)
+                 => [Filter record SqlBackend]
+                 -> [Update record]
                  -> m Int64
 updateWhereCount _ [] = return 0
 updateWhereCount filts upds = do
@@ -236,20 +237,20 @@ updateWhereCount filts upds = do
 updateFieldDef :: PersistEntity v => Update v -> FieldDef
 updateFieldDef (Update f _ _) = persistFieldDef f
 
-dummyFromFilts :: [Filter db record] -> record
+dummyFromFilts :: [Filter record SqlBackend] -> record
 dummyFromFilts = undefined
 
-getFiltsValues :: forall db val.  PersistEntity val => Connection -> [Filter db val] -> [PersistValue]
+getFiltsValues :: forall val.  PersistEntity val => Connection -> [Filter val SqlBackend] -> [PersistValue]
 getFiltsValues conn = snd . filterClauseHelper False False conn OrNullNo
 
 data OrNull = OrNullYes | OrNullNo
 
-filterClauseHelper :: PersistEntity val
+filterClauseHelper :: PersistEntity record
              => Bool -- ^ include table name?
              -> Bool -- ^ include WHERE?
              -> Connection
              -> OrNull
-             -> [Filter db val]
+             -> [Filter record SqlBackend]
              -> (Text, [PersistValue])
 filterClauseHelper includeTable includeWhere conn orNull filters =
     (if not (T.null sql) && includeWhere
@@ -399,17 +400,17 @@ filterClauseHelper includeTable includeWhere conn orNull filters =
 updatePersistValue :: Update v -> PersistValue
 updatePersistValue (Update _ v _) = toPersistValue v
 
-filterClause :: PersistEntity val
+filterClause :: PersistEntity record
              => Bool -- ^ include table name?
              -> Connection
-             -> [Filter db val]
+             -> [Filter record SqlBackend]
              -> Text
 filterClause b c = fst . filterClauseHelper b True c OrNullNo
 
-orderClause :: PersistEntity val
+orderClause :: PersistEntity record
             => Bool -- ^ include the table name
             -> Connection
-            -> SelectOpt val
+            -> SelectOpt record
             -> Text
 orderClause includeTable conn o =
     case o of
@@ -428,7 +429,7 @@ orderClause includeTable conn o =
             else id)
         $ connEscapeName conn $ fieldDB x
 
-dummyFromKey :: Key record -> record
+dummyFromKey :: IKey record SqlBackend -> record
 dummyFromKey = undefined
 
 -- | Generates sql for limit and offset for postgres, sqlite and mysql.

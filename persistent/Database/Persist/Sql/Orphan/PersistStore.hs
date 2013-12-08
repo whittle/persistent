@@ -22,7 +22,7 @@ import Data.Maybe (isJust)
 import Data.List (find)
 
 instance (C.MonadResource m, MonadLogger m) => PersistStore (SqlPersistT m) where
-    type MonadBackend (SqlPersistT m) = SqlBackend
+    type MonadDb (SqlPersistT m) = SqlBackend
     insert val = do
         conn <- askSqlConn
         case connInsertSql conn t vals of
@@ -127,14 +127,14 @@ instance (C.MonadResource m, MonadLogger m) => PersistStore (SqlPersistT m) wher
             , wher conn
             ]
 
-dummyFromKey :: Key v -> v
+dummyFromKey :: IKey v db -> v
 dummyFromKey = undefined
 
-insrepHelper :: ( MonadIO m,  MonadLogger m, MonadSqlPersist m
+insrepHelper :: ( MonadIO m,  MonadLogger m, MonadSqlPersist m, MonadDb m ~ db
                , PersistEntity record
                )
              => Text
-             -> Key record
+             -> IKey record db
              -> record
              -> m ()
 insrepHelper command k val = do
