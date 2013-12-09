@@ -473,22 +473,26 @@ mkAssociatedKey mps t = do
 
   let ikey = ConT ''DbSpecific
   let recordType = entityType t
+
   insideKeyName <- newName "x"
-  fpv <- [| \x -> case fromPersistValue x of
-              Left e' -> error $ unpack e'
-              Right r -> $(return $ ConE keyName) r
-        |]
   tpv <- [| toPersistValue $(return $ VarE insideKeyName) |]
+  let fromIKey body = Clause [ConP keyName [VarP insideKeyName]]
+                        (NormalB body)
+                        []
+  let pktpv = fromIKey $ VarE insideKeyName
+  fpv <- [| \z -> case fromPersistValue z of
+              Left e' -> error $ unpack e'
+              Right r -> r
+        |]
+  let fk = fromIKey $ fpv `AppE` VarE insideKeyName
+
   return
         [ TySynInstD (mkName "KeyType") [recordType] ikey
         -- , DataInstD [] ''IKey [ recordType ] [NormalC (mkName $ "I" `mappend` keyText) [(IsStrict, ConT ''PersistValue)]] []
-        , DataInstD [] ''PKey [ recordType, keyType ] autoKey []
-        ,  FunD 'persistValueToPersistKey [ Clause [] (NormalB fpv) []]
-        ,  FunD 'persistKeyToPersistValue [ Clause
-             [ConP keyName [VarP insideKeyName]]
-             (NormalB tpv)
-             []
-           ]
+        , DataInstD [] ''Keys [ recordType, keyType ] autoKey []
+        ,  FunD 'persistValueToPersistKey [ Clause [] (NormalB $ ConE keyName) [] ]
+        ,  FunD 'persistKeyToPersistValue [ pktpv ]
+        ,  FunD 'fromKey [ fk ]
         ]
 
 entId :: EntityDef -> Text

@@ -83,6 +83,8 @@ data PersistentSqlException = StatementAlreadyFinalized Text
 instance Exception PersistentSqlException
 
 data SqlBackend
+instance Backend SqlBackend where
+  type BackendKey SqlBackend = Int64
 
 newtype SqlPersistT m a = SqlPersistT { unSqlPersistT :: ReaderT Connection m a }
     deriving (Monad, MonadIO, MonadTrans, Functor, Applicative, MonadPlus)

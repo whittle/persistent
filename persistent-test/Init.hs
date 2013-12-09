@@ -194,5 +194,5 @@ instance Arbitrary PersistValue where
     arbitrary = PersistInt64 `fmap` choose (0, maxBound)
 #endif
 
-instance (KeyType record ~ typ, PersistEntity record) => Arbitrary (PKey record typ) where
+instance (KeyType record ~ typ, PersistEntity record) => Arbitrary (Keys record typ) where
   arbitrary = persistValueToPersistKey `fmap` arbitrary

@@ -9,6 +9,7 @@ module Database.Persist.Class.PersistEntity
     , Key
     , IKey
     , DbSpecific
+    , Backend (..)
     , Update (..)
     , SelectOpt (..)
     , BackendSpecificFilter
@@ -43,39 +44,33 @@ import Data.Monoid (mappend)
 class (PersistField record) => PersistEntity record where
     -- | An 'EntityField' is parameterised by the Haskell record it belongs to
     -- and the additional type of that field
-    data EntityField record :: * -> *
+    data EntityField record fieldType
 
     -- | return meta-data for a given 'EntityField'
-    persistFieldDef :: EntityField record typ -> FieldDef
+    persistFieldDef :: EntityField record fieldType -> FieldDef
 
-    -- | The type of the primary key (PKey)
+    -- | all of the keys
+    -- possibly an auto-generated key
+    -- and all the uniques
+    data Keys record keytype
+    fromKey :: PersistField a => Keys record typ -> a
+
+    -- | The type of the primary key (Key)
     -- Could be a key generated on insert (IKey) or a unique key (Unique).
     type KeyType record
 
-    -- | The primary key for this record
-    data PKey record keytype
     persistValueToPersistKey :: PersistValue -> Key record
     persistKeyToPersistValue :: Key record -> PersistValue
 
-    -- | The key type generated on insertion.
-    -- For example, an autoincrement key.
-    -- If the entity does not have such key, IKey record = ().
-    -- Different for each backend
-    {-
-    type IKey record
-    data IKey record
-    ikeyFromPKey :: (KeyType record ~ keytype) => PKey record keytype -> IKey record
-    ikeyToPKey   :: (KeyType record ~ keytype) => IKey record -> PKey record keytype
-    -}
-
     persistIdField :: EntityField record (Key record)
 
-    -- | Unique keys besided the Key
+    -- | Unique keys besides the Key generated on insertion
     data Unique record
 
     persistUniqueToFieldNames :: Unique record -> [(HaskellName, DBName)]
     persistUniqueToValues :: Unique record -> [PersistValue]
     persistUniqueKeys :: record -> [Unique record]
+    -- fromUnique :: Unique record -> a
 
     -- | retrieve the EntityDef meta-data for the record
     entityDef :: record -> EntityDef
@@ -89,23 +84,31 @@ class (PersistField record) => PersistEntity record where
     fieldLens :: EntityField record field
               -> (forall f. Functor f => (field -> f field) -> Entity record -> f (Entity record))
 
--- | A simpler way to refer to the PKey
-type Key record = PKey record (KeyType record)
-type IKey record = PKey record DbSpecific
+-- | A simpler way to refer to the primary key
+type Key record = Keys record (KeyType record)
+-- | The Key generated on insertion, could be ()
+type IKey record = Keys record DbSpecific
+type UKey record field = Keys record (Uniq field)
+
+data Uniq (u :: (* -> *) -> *)
+
+class (PersistField (BackendKey db)) => Backend db where
+  type BackendKey db
+  -- fromIKey :: IKey record -> BackendKey db
 
 instance (PersistEntity record, KeyType record ~ typ) =>
-  PersistField (PKey record typ) where
+  PersistField (Keys record typ) where
     toPersistValue = persistKeyToPersistValue
     fromPersistValue = Right . persistValueToPersistKey
 
-instance KeyType record ~ typ => Eq   (PKey record typ)
-instance KeyType record ~ typ => Ord  (PKey record typ)
-instance KeyType record ~ typ => Read (PKey record typ)
-instance KeyType record ~ typ => Show (PKey record typ)
+instance KeyType record ~ typ => Eq   (Keys record typ)
+instance KeyType record ~ typ => Ord  (Keys record typ)
+instance KeyType record ~ typ => Read (Keys record typ)
+instance KeyType record ~ typ => Show (Keys record typ)
 
-instance (KeyType record ~ typ, PersistEntity record) => ToJSON (PKey record typ) where
+instance (KeyType record ~ typ, PersistEntity record) => ToJSON (Keys record typ) where
     toJSON = toJSON . persistKeyToPersistValue
-instance (KeyType record ~ typ, PersistEntity record) => FromJSON (PKey record typ) where
+instance (KeyType record ~ typ, PersistEntity record) => FromJSON (Keys record typ) where
     parseJSON = fmap persistValueToPersistKey . parseJSON
 
 -- | Used for marking the primary key

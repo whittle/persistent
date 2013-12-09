@@ -760,11 +760,12 @@ instance (PersistField (ReverseFieldOrder a), PersistEntity a) => PersistEntity 
     newtype EntityField (ReverseFieldOrder a) b = EFRFO {unEFRFO :: EntityField a b}
     newtype Unique      (ReverseFieldOrder a)   = URFO  {unURFO  :: Unique      a  }
     type KeyType (ReverseFieldOrder a) = DbSpecific
-    data PKey (ReverseFieldOrder a) DbSpecific = RFOKey Int64
-    persistKeyToPersistValue (RFOKey i) = toPersistValue i
-    persistValueToPersistKey v = case fromPersistValue v of
-        Left e -> error $ T.unpack e
-        Right r -> RFOKey r
+    data Keys (ReverseFieldOrder a) typ where
+      RFOKey :: PersistValue -> Keys (ReverseFieldOrder a) DbSpecific
+    fromKey (RFOKey i) = either (error . T.unpack) id $ fromPersistValue i
+
+    persistKeyToPersistValue (RFOKey i) = i
+    persistValueToPersistKey = RFOKey
 
     persistFieldDef = persistFieldDef . unEFRFO
     entityDef = revFields . entityDef . unRFO

@@ -38,7 +38,7 @@ import qualified Control.Monad.Trans.Writer.Strict as Strict ( WriterT )
 import Database.Persist.Class.PersistEntity
 import Database.Persist.Types
 
-class MonadIO m => PersistStore m where
+class (MonadIO m, Backend (MonadBackend m)) => PersistStore m where
     type MonadBackend m
 
     -- | Get a record by identifier, if available.
