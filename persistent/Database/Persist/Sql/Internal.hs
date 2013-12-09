@@ -12,7 +12,7 @@ import Data.Char (isSpace)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Monoid (Monoid, mappend, mconcat)
-import Data.Maybe (mapMaybe, listToMaybe)
+import Data.Maybe (mapMaybe, listToMaybe, fromMaybe)
 import Database.Persist.Sql.Types
 
 -- | Create the list of columns for the given entity.
@@ -32,7 +32,7 @@ mkColumns allDefs t =
             (fieldDB fd)
             (nullable (fieldAttrs fd) /= NotNullable || entitySum t)
             (maybe
-                (fieldSqlType fd)
+                (fromMaybe (error "Sql.Internal.mkColumns fieldSqlType") $ fieldSqlType fd)
                 SqlOther
                 (listToMaybe $ mapMaybe (T.stripPrefix "sqltype=") $ fieldAttrs fd))
             (def $ fieldAttrs fd)

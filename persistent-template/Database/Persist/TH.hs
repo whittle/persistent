@@ -109,58 +109,90 @@ parseSqlType ps s =
   where
     defsOrig = parse ps s
 
-sqlEntityType :: [EntityDef] -> EntityDef -> EntityDef
-sqlEntityType allEntities ent = ent
+-- a lot of hacks to move an Exp through the system without
+-- having to dynamically type the fieldType of FielDef
+data EntityDefSqlTypeExp = EntityDefSqlTypeExp EntityDef [SqlTypeExp]
+
+data SqlTypeExp = SqlTypeExp Exp
+                | SqlType' SqlType
+
+instance Lift SqlTypeExp where
+    lift (SqlTypeExp e) = return e
+    lift (SqlType' t)   = lift (Just t)
+
+data FieldsSqlTypeExp = FieldsSqlTypeExp [FieldDef] [SqlTypeExp]
+
+instance Lift FieldsSqlTypeExp where
+    lift (FieldsSqlTypeExp fields sqlTypeExps) =
+        lift $ zipWith FieldSqlTypeExp fields sqlTypeExps
+
+data FieldSqlTypeExp = FieldSqlTypeExp FieldDef SqlTypeExp
+instance Lift FieldSqlTypeExp where
+    lift (FieldSqlTypeExp (FieldDef a b c d e f g) sqlTypeExp) =
+      [|FieldDef a b c $(lift sqlTypeExp) $(liftTs e) f $(lift' g)|]
+
+instance Lift EntityDefSqlTypeExp where
+    lift (EntityDefSqlTypeExp (EntityDef a b c d e f g h i j k) sqlTypeExps) =
+        [|EntityDef
+            $(lift a)
+            $(lift b)
+            $(lift c)
+            $(liftTs d)
+            $(lift (FieldsSqlTypeExp e sqlTypeExps))
+            $(lift f)
+            $(lift g)
+            $(lift h)
+            $(liftTs i)
+            $(liftMap j)
+            $(lift k)
+            |]
+
+sqlEntityType :: [EntityDef] -> EntityDef -> EntityDefSqlTypeExp
+sqlEntityType allEntities ent = EntityDefSqlTypeExp ent
     { entityFields = map sqlFieldDef $ entityFields ent }
+    (map final $ entityFields ent)
   where
     sqlFieldDef :: FieldDef -> FieldDef
     sqlFieldDef field = do
         field
-            { fieldSqlType = final
-            , fieldEmbedded = mEmbedded (fieldType field)
+            { -- fieldSqlType = Just $ final field
+              fieldEmbedded = mEmbedded (fieldType field)
             }
+    -- In the case of embedding, there won't be any datatype created yet.
+    -- We just use SqlString, as the data will be serialized to JSON.
+    final field
+        | isJust (mEmbedded (fieldType field)) = SqlType' SqlString
+        | isReference field = SqlType' SqlInt64
+        | otherwise =
+            case fieldType field of
+                -- In the case of lists, we always serialize to a string
+                -- value (via JSON).
+                --
+                -- Normally, this would be determined automatically by
+                -- SqlTypeExp. However, there's one corner case: if there's
+                -- a list of entity IDs, the datatype for the ID has not
+                -- yet been created, so the compiler will fail. This extra
+                -- clause works around this limitation.
+                FTList _ -> SqlType' SqlString
+                _ -> SqlTypeExp $ st field
+
+    mEmbedded (FTTypeCon Just{} _) = Nothing
+    mEmbedded (FTTypeCon Nothing n) = let name = HaskellName n in
+        find ((name ==) . entityHaskell) allEntities
+    mEmbedded (FTList x) = mEmbedded x
+    mEmbedded (FTApp x y) = maybe (mEmbedded y) Just (mEmbedded x)
+
+    isReference field =
+        case stripId $ fieldType field of
+            Just{} -> True
+            Nothing -> False
+
+    -- \x -> Just (sqlType (undefined :: Text) x)
+    st field = ConE 'Just `AppE` (VarE 'sqlType `AppE` typedNothing)
       where
-        -- In the case of embedding, there won't be any datatype created yet.
-        -- We just use SqlString, as the data will be serialized to JSON.
-        final
-            | isJust (mEmbedded (fieldType field)) = SqlString
-            | isReference = SqlInt64
-            | otherwise =
-                case fieldType field of
-                    -- In the case of lists, we always serialize to a string
-                    -- value (via JSON).
-                    --
-                    -- Normally, this would be determined automatically by
-                    -- SqlTypeExp. However, there's one corner case: if there's
-                    -- a list of entity IDs, the datatype for the ID has not
-                    -- yet been created, so the compiler will fail. This extra
-                    -- clause works around this limitation.
-                    FTList _ -> SqlString
-                    _ -> SqlString
-
-        mEmbedded (FTTypeCon Just{} _) = Nothing
-        mEmbedded (FTTypeCon Nothing n) = let name = HaskellName n in
-            find ((name ==) . entityHaskell) allEntities
-        mEmbedded (FTList x) = mEmbedded x
-        mEmbedded (FTApp x y) = maybe (mEmbedded y) Just (mEmbedded x)
-
-        isReference =
-            case stripId $ fieldType field of
-                Just{} -> True
-                Nothing -> False
-
         typ = ftToType $ fieldType field
         mtyp = (ConT ''Maybe `AppT` typ)
-        typedNothing = SigE (ConE 'Nothing) mtyp
-        st = VarE 'sqlType `AppE` typedNothing
-
-data SqlTypeExp = SqlTypeExp Exp
-                | SqlString'
-                | SqlInt64'
-instance Lift SqlTypeExp where
-    lift (SqlTypeExp e) = return e
-    lift SqlString'     = [|SqlString|]
-    lift SqlInt64'      = [|SqlInt64|]
+        typedNothing = SigE (VarE 'undefined) mtyp
 
 -- | Create data types and appropriate 'PersistEntity' instances for the given
 -- 'EntityDef's. Works well with the persist quasi-quoter.
@@ -623,7 +655,7 @@ mkEntity mps t = do
         { fieldHaskell = HaskellName "Id"
         , fieldDB = entityID t
         , fieldType = FTTypeCon Nothing (entId t)
-        , fieldSqlType = SqlInt64
+        , fieldSqlType = Just SqlInt64
         , fieldEmbedded = Nothing
         , fieldAttrs = []
         , fieldStrict = True

@@ -143,7 +143,6 @@ instance PersistEntity record => PathPiece (KeyBackend MongoBackend record) wher
         case T.uncons keyText of
             Just ('o', prefixed) -> prefixed
             _ -> keyText
--}
 
 keyToText :: PersistEntity record => KeyBackend MongoBackend record -> Text
 keyToText = go . persistKeyToPersistValue
@@ -159,6 +158,7 @@ readMayKey str =
   case (reads $ (T.unpack str)) :: [(DB.ObjectId,String)] of
     (parsed,_):[] -> Just $ persistValueToPersistKey $ PersistObjectId $ Serialize.encode parsed
     _ -> Nothing
+-}
 
 
 -- | wrapper of 'ObjectId'
@@ -255,16 +255,16 @@ runMongoDBPool accessMode action pool =
 runMongoDBPoolDef :: (Trans.MonadIO m, MonadBaseControl IO m) => DB.Action m a -> ConnectionPool -> m a
 runMongoDBPoolDef = runMongoDBPool (DB.ConfirmWrites ["j" DB.=: True])
 
-filterByKey :: (PersistEntity record, EntityBackend record ~ MongoBackend)
-            => Key record -> DB.Document
+filterByKey :: (PersistEntity record, KeyType record ~ DbSpecific)
+            => IKey record -> DB.Document
 filterByKey k = [_id DB.=: keyToOid k]
 
-queryByKey :: (PersistEntity record, EntityBackend record ~ MongoBackend)
-           => Key record -> EntityDef a -> DB.Query
+queryByKey :: (PersistEntity record, KeyType record ~ DbSpecific)
+           => IKey record -> EntityDef -> DB.Query
 queryByKey k record = (DB.select (filterByKey k) (unDBName $ entityDB record))
 
-selectByKey :: (PersistEntity record, EntityBackend record ~ MongoBackend)
-            => Key record -> EntityDef a -> DB.Selection
+selectByKey :: (PersistEntity record, KeyType record ~ DbSpecific)
+            => IKey record -> EntityDef -> DB.Selection
 selectByKey k record = (DB.select (filterByKey k) (unDBName $ entityDB record))
 
 updateFields :: (PersistEntity entity) => [Update entity] -> [DB.Field]
@@ -301,10 +301,10 @@ toInsertFields record = zipFilter (entityFields entity) (toPersistFields record)
     zipFilter (e:efields) (p:pfields) = let pv = toPersistValue p in
         if pv == PersistNull then zipFilter efields pfields
           else (fieldToLabel e DB.:= DB.val pv):zipFilter efields pfields
-    entity = entityDef $ Just record
+    entity = entityDef record
 
 collectionName :: (PersistEntity record) => record -> Text
-collectionName = unDBName . entityDB . entityDef . Just
+collectionName = unDBName . entityDB . entityDef
 
 -- | convert a PersistEntity into document fields.
 -- unlike 'toInsertFields', nulls are included.
@@ -316,27 +316,29 @@ entityToDocument record = zipIt (entityFields entity) (toPersistFields record)
     zipIt (e:efields) (p:pfields) =
       let pv = toPersistValue p
       in  (fieldToLabel e DB.:= DB.val pv):zipIt efields pfields
-    entity = entityDef $ Just record
+    entity = entityDef record
 
 -- | Deprecated, use the better named entityToDocument
 entityToFields :: (PersistEntity record) => record -> [DB.Field]
 entityToFields = entityToDocument
 {-# DEPRECATED entityToFields "Please use entityToDocument instead" #-}
 
-fieldToLabel :: FieldDef a -> Text
+fieldToLabel :: FieldDef -> Text
 fieldToLabel = unDBName . fieldDB
 
 saveWithKey :: forall m entity keyEntity.
-            (PersistEntity entity, PersistEntity keyEntity, EntityBackend keyEntity ~ MongoBackend)
+            (PersistEntity entity, PersistEntity keyEntity, KeyType keyEntity ~ DbSpecific)
             => (entity -> [DB.Field])
             -> (Text -> [DB.Field] -> DB.Action m ())
-            -> Key keyEntity
+            -> IKey keyEntity
             -> entity
             -> DB.Action m ()
 saveWithKey entToFields dbSave key record =
       dbSave (collectionName record) ((keyToMongoIdField key):(entToFields record))
 
 data MongoBackend deriving Typeable
+instance Backend MongoBackend where
+  type BackendKey MongoBackend = Objectid
 
 instance (Applicative m, Functor m, Trans.MonadIO m, MonadBaseControl IO m) => PersistStore (DB.Action m) where
     type MonadBackend (DB.Action m) = MongoBackend
@@ -353,11 +355,12 @@ instance (Applicative m, Functor m, Trans.MonadIO m, MonadBaseControl IO m) => P
 
     repsert   k record = saveWithKey entityToDocument DB.save k record
 
+{-
     replace k record = do
         DB.replace (selectByKey k t) (toInsertFields record)
         return ()
       where
-        t = entityDef $ Just record
+        t = entityDef record
 
     delete k =
         DB.deleteOne DB.Select {
@@ -373,7 +376,8 @@ instance (Applicative m, Functor m, Trans.MonadIO m, MonadBaseControl IO m) => P
                 Entity _ ent <- fromPersistValuesThrow t doc
                 return $ Just ent
           where
-            t = entityDef $ Just $ dummyFromKey k
+            t = entityDef $ dummyFromKey k
+        -}
 
 instance MonadThrow m => MonadThrow (DB.Action m) where
     monadThrow = lift . monadThrow
@@ -386,7 +390,7 @@ instance (Applicative m, Functor m, Trans.MonadIO m, MonadBaseControl IO m) => P
             Nothing -> return Nothing
             Just doc -> fmap Just $ fromPersistValuesThrow t doc
       where
-        t = entityDef $ Just $ dummyFromUnique uniq
+        t = entityDef $ dummyFromUnique uniq
 
     deleteBy uniq =
         DB.delete DB.Select {
@@ -397,12 +401,13 @@ instance (Applicative m, Functor m, Trans.MonadIO m, MonadBaseControl IO m) => P
 _id :: T.Text
 _id = "_id"
 
-keyToMongoIdField :: (PersistEntity entity, EntityBackend entity ~ MongoBackend)
-                  => Key entity -> DB.Field
+keyToMongoIdField :: (PersistEntity record, KeyType record ~ DbSpecific)
+                  => IKey record -> DB.Field
 keyToMongoIdField k = _id DB.:= (DB.ObjId $ keyToOid k)
 
 
 instance (Applicative m, Functor m, Trans.MonadIO m, MonadBaseControl IO m) => PersistQuery (DB.Action m) where
+  {-
     update _ [] = return ()
     update key upds =
         DB.modify 
@@ -420,7 +425,8 @@ instance (Applicative m, Functor m, Trans.MonadIO m, MonadBaseControl IO m) => P
             return ent
       where
         err msg = Trans.liftIO $ throwIO $ KeyNotFound $ show key ++ msg
-        t = entityDef $ Just $ dummyFromKey key
+        t = entityDef $ dummyFromKey key
+        -}
 
 
     updateWhere _ [] = return ()
@@ -455,7 +461,7 @@ instance (Applicative m, Functor m, Trans.MonadIO m, MonadBaseControl IO m) => P
                     entity <- fromPersistValuesThrow t doc
                     yield entity
                     pull cursor
-        t = entityDef $ Just $ dummyFromFilts filts
+        t = entityDef $ dummyFromFilts filts
 
     selectFirst filts opts = do
         mdoc <- DB.findOne $ makeQuery filts opts
@@ -463,7 +469,7 @@ instance (Applicative m, Functor m, Trans.MonadIO m, MonadBaseControl IO m) => P
             Nothing -> return Nothing
             Just doc -> fmap Just $ fromPersistValuesThrow t doc
       where
-        t = entityDef $ Just $ dummyFromFilts filts
+        t = entityDef $ dummyFromFilts filts
 
     selectKeys filts opts = do
         cursor <- lift $ DB.find $ (makeQuery filts opts) {
@@ -487,7 +493,7 @@ orderClause o = case o of
                   _      -> error "orderClause: expected Asc or Desc"
 
 
-makeQuery :: (PersistEntity val, EntityBackend val ~ MongoBackend) => [Filter val] -> [SelectOpt val] -> DB.Query
+makeQuery :: (PersistEntity val) => [Filter MongoBackend val] -> [SelectOpt val] -> DB.Query
 makeQuery filts opts =
     (DB.select (filtersToSelector filts) (collectionName $ dummyFromFilts filts)) {
       DB.limit = fromIntegral limit
@@ -498,17 +504,17 @@ makeQuery filts opts =
     (limit, offset, orders') = limitOffsetOrder opts
     orders = map orderClause orders'
 
-filtersToSelector :: (PersistEntity val, EntityBackend val ~ MongoBackend) => [Filter val] -> DB.Document
+filtersToSelector :: (PersistEntity val) => [Filter MongoBackend val] -> DB.Document
 filtersToSelector filts = 
 #ifdef DEBUG
   debug $
 #endif
     if null filts then [] else concatMap filterToDocument filts
 
-multiFilter :: forall record. (PersistEntity record, EntityBackend record ~ MongoBackend) => String -> [Filter record] -> [DB.Field]
+multiFilter :: forall record. (PersistEntity record) => String -> [Filter MongoBackend record] -> [DB.Field]
 multiFilter multi fs = [T.pack multi DB.:= DB.Array (map (DB.Doc . filterToDocument) fs)]
 
-filterToDocument :: (PersistEntity val, EntityBackend val ~ MongoBackend) => Filter val -> DB.Document
+filterToDocument :: (PersistEntity val) => Filter MongoBackend val -> DB.Document
 filterToDocument f =
     case f of
       Filter field v filt -> return $ case filt of
@@ -548,7 +554,7 @@ fieldName = idfix . unDBName . fieldDB . persistFieldDef
 docToEntityEither :: forall record. (PersistEntity record) => DB.Document -> Either T.Text (Entity record)
 docToEntityEither doc = entity
   where
-    entDef = entityDef $ Just (getType entity)
+    entDef = entityDef $ getType entity
     entity = eitherFromPersistValues entDef doc
     getType :: Either err (Entity ent) -> ent
     getType = error "docToEntityEither/getType: never here"
@@ -560,14 +566,14 @@ docToEntityThrow doc =
         Right entity -> return entity
 
 
-fromPersistValuesThrow :: (Trans.MonadIO m, PersistEntity record) => EntityDef a -> [DB.Field] -> m (Entity record)
+fromPersistValuesThrow :: (Trans.MonadIO m, PersistEntity record) => EntityDef -> [DB.Field] -> m (Entity record)
 fromPersistValuesThrow entDef doc = 
     case eitherFromPersistValues entDef doc of
         Left t -> Trans.liftIO . throwIO $ PersistMarshalError $
                    unHaskellName (entityHaskell entDef) `mappend` ": " `mappend` t
         Right entity -> return entity
 
-eitherFromPersistValues :: (PersistEntity record) => EntityDef a -> [DB.Field] -> Either T.Text (Entity record)
+eitherFromPersistValues :: (PersistEntity record) => EntityDef -> [DB.Field] -> Either T.Text (Entity record)
 eitherFromPersistValues entDef doc =
     let castDoc = assocListFromDoc doc
         -- normally _id is the first field
@@ -585,7 +591,7 @@ eitherFromPersistValues entDef doc =
 --
 -- Persistent creates a Haskell record from a list of PersistValue
 -- But most importantly it puts all PersistValues in the proper order
-orderPersistValues :: EntityDef a -> [(Text, PersistValue)] -> [(Text, PersistValue)]
+orderPersistValues :: EntityDef -> [(Text, PersistValue)] -> [(Text, PersistValue)]
 orderPersistValues entDef castDoc = reorder
   where
     castColumns = map nameAndEmbedded (entityFields entDef)
@@ -610,7 +616,7 @@ orderPersistValues entDef castDoc = reorder
     reorder :: [(Text, PersistValue)] 
     reorder = match castColumns castDoc []
       where
-        match :: [(Text, Maybe (EntityDef ()) )]
+        match :: [(Text, Maybe EntityDef)]
               -> [(Text, PersistValue)]
               -> [(Text, PersistValue)]
               -> [(Text, PersistValue)]
@@ -662,7 +668,7 @@ persistObjectIdToDbOid (PersistObjectId k) = case Serialize.decode k of
                   Right o -> o
 persistObjectIdToDbOid _ = throw $ PersistInvalidField "expected PersistObjectId"
 
-keyToOid :: (PersistEntity entity, EntityBackend entity ~ MongoBackend)
+keyToOid :: (PersistEntity entity)
          => Key entity -> DB.ObjectId
 keyToOid = persistObjectIdToDbOid . persistKeyToPersistValue
 
@@ -716,11 +722,11 @@ instance Serialize.Serialize DB.ObjectId where
            w2 <- Serialize.get
            return (DB.Oid w1 w2) 
 
-dummyFromKey :: KeyBackend MongoBackend v -> v
+dummyFromKey :: (KeyType record ~ DbSpecific) => IKey record -> record
 dummyFromKey _ = error "dummyFromKey"
-dummyFromUnique :: Unique v -> v
+dummyFromUnique :: Unique record -> record
 dummyFromUnique _ = error "dummyFromUnique"
-dummyFromFilts :: [Filter v] -> v
+dummyFromFilts :: [Filter MongoBackend record] -> record
 dummyFromFilts _ = error "dummyFromFilts"
 
 data MongoAuth = MongoAuth DB.Username DB.Password deriving Show
@@ -870,11 +876,11 @@ infixr 4 `nestEq`
 
 -- | The normal Persistent equality test (==.) is not generic enough.
 -- Instead use this with the drill-down operaters (->.) or (?->.)
-nestEq :: forall v typ. (PersistField typ, EntityBackend v ~ MongoBackend) => NestedField v typ -> typ -> Filter v
+nestEq :: forall v typ. (PersistField typ) => NestedField v typ -> typ -> Filter MongoBackend v
 nf `nestEq` v = BackendFilter $ NestedFilter {nestedField = nf, fieldValue = (Left v)}
 
 -- | use to see if an embedded list contains an item
-multiEq :: forall v typ. (PersistField typ, EntityBackend v ~ MongoBackend) => EntityField v [typ] -> typ -> Filter v
+multiEq :: forall v typ. (PersistField typ) => EntityField v [typ] -> typ -> Filter MongoBackend v
 fld `multiEq` val = BackendFilter $ MultiKeyFilter {mulFldKey = fld, mulFldVal = (Left val)}
 
 mongoFilterToDoc :: PersistEntity val => MongoFilter val -> DB.Document

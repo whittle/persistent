@@ -32,7 +32,7 @@ HtmlTable
     deriving
 |]
 
-cleanDB :: (PersistQuery m) => m ()
+cleanDB :: (PersistQuery m, MonadBackend m ~ BackendMonad) => m ()
 cleanDB = deleteWhere ([] :: [Filter BackendMonad HtmlTable])
 
 specs :: Spec

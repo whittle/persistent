@@ -24,6 +24,7 @@ module Database.Persist.Class
     -- * PersistEntity
     , PersistEntity (..)
     , DbSpecific
+    , Backend (..)
     , IKey
     -- * PersistField
     , PersistField (..)

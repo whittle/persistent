@@ -118,16 +118,16 @@ share [mkPersist sqlSettings,  mkMigrate "embedMigrate"] [persistUpperCase|
 |]
 
 #ifdef WITH_MONGODB
-cleanDB :: (PersistQuery m, EntityBackend HasMapEmbed ~ MonadBackend m) => m ()
+cleanDB :: (PersistQuery m, db ~ MonadBackend m) => m ()
 cleanDB = do
-  deleteWhere ([] :: [Filter HasEmbed])
-  deleteWhere ([] :: [Filter HasEmbeds])
-  deleteWhere ([] :: [Filter HasListEmbed])
-  deleteWhere ([] :: [Filter HasSetEmbed])
-  deleteWhere ([] :: [Filter User])
-  deleteWhere ([] :: [Filter HasMapEmbed])
-  deleteWhere ([] :: [Filter ListEmbed])
-  deleteWhere ([] :: [Filter ARecord])
+  deleteWhere ([] :: [Filter db HasEmbed])
+  deleteWhere ([] :: [Filter db HasEmbeds])
+  deleteWhere ([] :: [Filter db HasListEmbed])
+  deleteWhere ([] :: [Filter db HasSetEmbed])
+  deleteWhere ([] :: [Filter db User])
+  deleteWhere ([] :: [Filter db HasMapEmbed])
+  deleteWhere ([] :: [Filter db ListEmbed])
+  deleteWhere ([] :: [Filter db ARecord])
 
 db :: Action IO () -> Assertion
 db = db' cleanDB

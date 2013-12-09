@@ -38,10 +38,10 @@ share [mkPersist sqlSettings,  mkMigrate "uniqueMigrate"] [persistLowerCase|
 #endif
 |]
 #ifdef WITH_MONGODB
-cleanDB :: (PersistQuery m, EntityBackend TestNonNull ~ MonadBackend m) => m ()
+cleanDB :: (PersistQuery m, db ~ MonadBackend m) => m ()
 cleanDB = do
-  deleteWhere ([] :: [Filter TestNonNull])
-  deleteWhere ([] :: [Filter TestNull])
+  deleteWhere ([] :: [Filter db TestNonNull])
+  deleteWhere ([] :: [Filter db TestNull])
 
 db :: Action IO () -> Assertion
 db = db' cleanDB

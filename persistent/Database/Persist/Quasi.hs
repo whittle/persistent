@@ -272,7 +272,7 @@ takeCols ps (n':typ:rest)
                 { fieldHaskell = HaskellName n
                 , fieldDB = DBName $ getDbName ps n rest
                 , fieldType = ft
-                , fieldSqlType = SqlString
+                , fieldSqlType = Nothing
                 , fieldAttrs = rest
                 , fieldStrict = fromMaybe (psStrictFields ps) mstrict
                 , fieldEmbedded = Nothing

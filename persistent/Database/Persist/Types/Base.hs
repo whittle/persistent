@@ -135,7 +135,7 @@ data FieldDef = FieldDef
     { fieldHaskell  :: !HaskellName -- ^ name of the field
     , fieldDB       :: !DBName
     , fieldType     :: !FieldType
-    , fieldSqlType  :: !SqlType
+    , fieldSqlType  :: !(Maybe SqlType)
     , fieldAttrs    :: ![Attr]   -- ^ user annotations for a field
     , fieldStrict   :: !Bool      -- ^ a strict field in the data type. Default: true
     , fieldEmbedded :: Maybe EntityDef -- ^ indicates that the field uses an embedded entity

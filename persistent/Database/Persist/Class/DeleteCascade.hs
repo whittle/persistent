@@ -15,6 +15,6 @@ import qualified Data.Conduit.List as CL
 class (PersistStore m, PersistEntity record) => DeleteCascade record m where
     deleteCascade :: Key record -> m ()
 
-deleteCascadeWhere :: (DeleteCascade record m, PersistQuery m)
+deleteCascadeWhere :: (DeleteCascade record m, PersistQuery m, MonadBackend m ~ db)
                    => [Filter db record] -> m ()
 deleteCascadeWhere filts = selectKeys filts [] C.$$ CL.mapM_ deleteCascade

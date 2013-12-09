@@ -46,31 +46,30 @@ class PersistStore m => PersistQuery m where
     --
     -- Note that this function will throw an exception if the given key is not
     -- found in the database.
-    updateGet :: ( PersistEntity val
-                , Show (Key val))
+    updateGet :: ( PersistEntity val )
               => Key val -> [Update val] -> m val
     updateGet key ups = do
         update key ups
         get key >>= maybe (liftIO $ throwIO $ KeyNotFound $ show key) return
 
     -- | Update individual fields on any record matching the given criterion.
-    updateWhere :: (PersistEntity val)
+    updateWhere :: (PersistEntity val, MonadBackend m ~ db)
                 => [Filter db val] -> [Update val] -> m ()
 
     -- | Delete all records matching the given criterion.
-    deleteWhere :: (PersistEntity val)
+    deleteWhere :: (PersistEntity val, MonadBackend m ~ db)
                 => [Filter db val] -> m ()
 
     -- | Get all records matching the given criterion in the specified order.
     -- Returns also the identifiers.
     selectSource
-           :: (PersistEntity val)
-           => [Filter db val]
-           -> [SelectOpt val]
-           -> C.Source m (Entity val)
+           :: (PersistEntity record, MonadBackend m ~ db)
+           => [Filter db record]
+           -> [SelectOpt record]
+           -> C.Source m (Entity record)
 
     -- | get just the first record for the criterion
-    selectFirst :: (PersistEntity val)
+    selectFirst :: (PersistEntity val, MonadBackend m ~ db)
                 => [Filter db val]
                 -> [SelectOpt val]
                 -> m (Maybe (Entity val))
@@ -78,24 +77,24 @@ class PersistStore m => PersistQuery m where
 
 
     -- | Get the 'Key's of all records matching the given criterion.
-    selectKeys :: (PersistEntity record)
+    selectKeys :: (PersistEntity record, MonadBackend m ~ db)
                => [Filter db record]
                -> [SelectOpt record]
                -> C.Source m (Key record)
 
     -- | The total number of records fulfilling the given criterion.
-    count :: (PersistEntity record)
+    count :: (PersistEntity record, MonadBackend m ~ db)
           => [Filter db record] -> m Int
 
 -- | Call 'selectSource' but return the result as a list.
-selectList :: (PersistEntity val, PersistQuery m)
+selectList :: (PersistEntity val, PersistQuery m, MonadBackend m ~ db)
            => [Filter db val]
            -> [SelectOpt val]
            -> m [Entity val]
 selectList a b = selectSource a b C.$$ CL.consume
 
 -- | Call 'selectKeys' but return the result as a list.
-selectKeysList :: (PersistEntity record, PersistQuery m)
+selectKeysList :: (PersistEntity record, PersistQuery m, MonadBackend m ~ db)
                => [Filter db record]
                -> [SelectOpt record]
                -> m [Key record]

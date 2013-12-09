@@ -31,10 +31,10 @@ Bar
 |]
 
 #ifdef WITH_MONGODB
-cleanDB :: (PersistQuery m, EntityBackend Foo ~ MonadBackend m) => m ()
+cleanDB :: (PersistQuery m, db ~ MonadBackend m) => m ()
 cleanDB = do
-  deleteWhere ([] :: [Filter Foo])
-  deleteWhere ([] :: [Filter Bar])
+  deleteWhere ([] :: [Filter db Foo])
+  deleteWhere ([] :: [Filter db Bar])
 
 db :: Action IO () -> Assertion
 db = db' cleanDB
