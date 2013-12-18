@@ -19,7 +19,8 @@ import Database.Persist.Sql
 import qualified Database.Sqlite as Sqlite
 
 import Control.Monad.IO.Class (MonadIO (..))
-import Control.Monad.Logger (NoLoggingT, runNoLoggingT)
+import Control.Monad.Trans.Resource (Resource, mkResource, with)
+import Control.Monad.Logger (LogFunc, MonadLogger, runNoLoggingT)
 import Data.List (intercalate)
 import Data.IORef
 import qualified Data.Map as Map
@@ -34,30 +35,31 @@ import qualified Data.Conduit.List as CL
 import Control.Applicative
 import Data.Int (Int64)
 import Control.Monad ((>=>))
+import Control.Monad.Trans.Class (lift)
 
-createSqlitePool :: MonadIO m => Text -> Int -> m ConnectionPool
+createSqlitePool :: (MonadIO m, MonadLogger m) => Text -> Int -> m ConnectionPool
 createSqlitePool s = createSqlPool $ open' s
 
-withSqlitePool :: (MonadBaseControl IO m, MonadIO m)
+withSqlitePool :: (MonadBaseControl IO m, MonadIO m, MonadLogger m)
                => Text
                -> Int -- ^ number of connections to open
                -> (ConnectionPool -> m a) -> m a
-withSqlitePool s = withSqlPool $ open' s
+withSqlitePool = withSqlPool . open'
 
-withSqliteConn :: (MonadBaseControl IO m, MonadIO m)
-               => Text -> (Connection -> m a) -> m a
+withSqliteConn :: (MonadBaseControl IO m, MonadIO m, MonadLogger m)
+               => Text -> (SqlBackend -> m a) -> m a
 withSqliteConn = withSqlConn . open'
 
-open' :: Text -> IO Connection
-open' = Sqlite.open >=> wrapConnection
+open' :: Text -> LogFunc -> IO SqlBackend
+open' connstr lf = Sqlite.open connstr >>= flip wrapConnection lf
 
 -- | Wrap up a raw 'Sqlite.Connection' as a Persistent SQL 'Connection'.
 --
 -- Since 1.1.5
-wrapConnection :: Sqlite.Connection -> IO Connection
-wrapConnection conn = do
+wrapConnection :: Sqlite.Connection -> LogFunc -> IO SqlBackend
+wrapConnection conn lf = do
     smap <- newIORef $ Map.empty
-    return Connection
+    return SqlBackend
         { connPrepare = prepare' conn
         , connStmtMap = smap
         , connInsertSql = insertSql'
@@ -70,6 +72,7 @@ wrapConnection conn = do
         , connNoLimit = "LIMIT -1"
         , connRDBMS = "sqlite"
         , connLimitOffset = decorateSQLWithLimitOffset "LIMIT -1"
+        , connLogFunc = lf
         }
   where
     helper t getter = do
@@ -85,12 +88,10 @@ wrapConnection conn = do
 -- Since 1.1.4
 runSqlite :: (MonadBaseControl IO m, MonadIO m)
           => Text -- ^ connection string
-          -> SqlPersistT (NoLoggingT (ResourceT m)) a -- ^ database action
+          -> SqlPersistT m a -- ^ database action
           -> m a
-runSqlite connstr = runResourceT
-                  . runNoLoggingT
-                  . withSqliteConn connstr
-                  . runSqlConn
+runSqlite connstr action = runNoLoggingT $ withSqliteConn connstr $ \conn -> do
+    lift $ runSqlConn action conn
 
 prepare' :: Sqlite.Connection -> Text -> IO Statement
 prepare' conn sql = do
@@ -137,15 +138,13 @@ execute' conn stmt vals = flip finally (liftIO $ Sqlite.reset conn stmt) $ do
     Sqlite.changes conn
 
 withStmt'
-          :: MonadResource m
-          => Sqlite.Connection
+          :: Sqlite.Connection
           -> Sqlite.Statement
           -> [PersistValue]
-          -> Source m [PersistValue]
-withStmt' conn stmt vals = bracketP
-    (Sqlite.bind stmt vals >> return stmt)
-    (Sqlite.reset conn)
-    (const pull)
+          -> Resource (Source IO [PersistValue])
+withStmt' conn stmt vals = do
+    mkResource (Sqlite.bind stmt vals) (\() -> Sqlite.reset conn stmt)
+    return pull
   where
     pull = do
         x <- liftIO $ Sqlite.step stmt
@@ -178,8 +177,7 @@ migrate' allDefs getter val = do
     let (cols, uniqs, _) = mkColumns allDefs val
     let newSql = mkCreateTable False def (filter (not . safeToRemove val . cName) cols, uniqs)
     stmt <- getter "SELECT sql FROM sqlite_master WHERE type='table' AND name=?"
-    oldSql' <- runResourceT
-             $ stmtQuery stmt [PersistText $ unDBName table] $$ go
+    oldSql' <- with (stmtQuery stmt [PersistText $ unDBName table]) ($$ go)
     case oldSql' of
         Nothing -> return $ Right [(False, newSql)]
         Just oldSql -> do
@@ -212,7 +210,7 @@ getCopyTable :: [EntityDef a]
              -> IO [(Bool, Text)]
 getCopyTable allDefs getter val = do
     stmt <- getter $ pack $ "PRAGMA table_info(" ++ escape' table ++ ")"
-    oldCols' <- runResourceT $ stmtQuery stmt [] $$ getCols
+    oldCols' <- with (stmtQuery stmt []) ($$ getCols)
     let oldCols = map DBName $ filter (/= "id") oldCols' -- need to update for table id attribute ?
     let newCols = filter (not . safeToRemove def) $ map cName cols
     let common = filter (`elem` oldCols) newCols
@@ -333,6 +331,7 @@ data SqliteConf = SqliteConf
     , sqlPoolSize :: Int
     }
 
+{- FIXME
 instance PersistConfig SqliteConf where
     type PersistConfigBackend SqliteConf = SqlPersistT
     type PersistConfigPool SqliteConf = ConnectionPool
@@ -342,6 +341,7 @@ instance PersistConfig SqliteConf where
         SqliteConf <$> o .: "database"
                    <*> o .: "poolsize"
     loadConfig _ = mzero
+-}
 
 finally :: MonadBaseControl IO m
         => m a -- ^ computation to run first

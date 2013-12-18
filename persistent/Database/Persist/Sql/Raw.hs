@@ -19,8 +19,18 @@ import Data.Int (Int64)
 import Control.Monad.Trans.Class (lift)
 import qualified Data.Text as T
 import Data.Conduit
-import Control.Monad.Trans.Resource (allocateResource, release)
+import Control.Monad.Trans.Resource (allocateResource, release, Resource, mkResource)
 import Control.Monad.Reader (runReaderT)
+
+rawQueryResource
+    :: Text
+    -> [PersistValue]
+    -> SqlBackend
+    -> Resource (Source IO [PersistValue])
+rawQueryResource sql vals conn = do
+    liftIO $ runReaderT ($logDebugS (pack "SQL") $ pack $ show sql ++ " " ++ show vals) (connLogFunc conn)
+    stmt <- mkResource (getStmtConn conn sql) stmtReset
+    stmtQuery stmt vals
 
 rawQuery :: (MonadSqlPersist m, MonadResource m)
          => Text
@@ -28,15 +38,9 @@ rawQuery :: (MonadSqlPersist m, MonadResource m)
          -> Source m [PersistValue]
 rawQuery sql vals = do
     conn <- lift askSqlConn
-    runReaderT ($logDebugS (pack "SQL") $ pack $ show sql ++ " " ++ show vals) (connLogFunc conn)
-    bracketP
-        (getStmtConn conn sql)
-        stmtReset
-        (\stmt -> do
-            (releaseKey, src) <- allocateResource $ stmtQuery stmt vals
-            transPipe liftIO src
-            release releaseKey
-            )
+    (releaseKey, src) <- allocateResource $ rawQueryResource sql vals conn
+    transPipe liftIO src
+    release releaseKey
 
 rawExecute :: MonadSqlPersist m => Text -> [PersistValue] -> m ()
 rawExecute x y = liftM (const ()) $ rawExecuteCount x y
@@ -110,7 +114,7 @@ getStmtConn conn sql = do
 -- However, most common problems are mitigated by using the
 -- entity selection placeholder @??@, and you shouldn't see any
 -- error at all if you're not using 'Single'.
-rawSql :: (RawSql a, MonadSqlPersist m, MonadResource m)
+rawSql :: (RawSql a, MonadSqlPersist m, MonadResource m, HasPersistBackend env SqlBackend, MonadReader env m)
        => Text             -- ^ SQL statement, possibly with placeholders.
        -> [PersistValue]   -- ^ Values to fill the placeholders.
        -> m [a]

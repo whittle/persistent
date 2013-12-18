@@ -16,6 +16,7 @@ import Control.Monad.Trans.Control (MonadBaseControl)
 import Control.Monad.Trans.Class (MonadTrans (..))
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Writer
+import Control.Monad.Reader (MonadReader)
 import Control.Monad (liftM, unless)
 import Data.Text (Text, unpack, snoc, isPrefixOf, pack)
 import qualified Data.Text.IO
@@ -26,6 +27,7 @@ import Database.Persist.Sql.Types
 import Database.Persist.Sql.Class
 import Database.Persist.Sql.Raw
 import Database.Persist.Types
+import Database.Persist.Class.PersistStore (HasPersistBackend)
 
 allSql :: CautiousMigration -> [Sql]
 allSql = map snd
@@ -109,7 +111,7 @@ sortMigrations x =
     -- choose to have this special sorting applied.
     isCreate t = pack "CREATe " `isPrefixOf` t
 
-migrate :: MonadSqlPersist m
+migrate :: (MonadSqlPersist m, HasPersistBackend env SqlBackend, MonadReader env m)
         => [EntityDef SqlType]
         -> EntityDef SqlType
         -> Migration m

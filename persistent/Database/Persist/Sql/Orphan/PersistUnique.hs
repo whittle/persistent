@@ -3,6 +3,7 @@
 module Database.Persist.Sql.Orphan.PersistUnique () where
 
 import Database.Persist
+import Database.Persist.Class.PersistUnique
 import Database.Persist.Sql.Types
 import Database.Persist.Sql.Class
 import Database.Persist.Sql.Raw
@@ -10,15 +11,16 @@ import Database.Persist.Sql.Orphan.PersistStore ()
 import qualified Data.Text as T
 import Data.Monoid ((<>))
 import Control.Monad.Logger
+import Control.Monad.Trans.Resource (with)
+import Control.Monad.Reader (runReaderT)
 import qualified Data.Conduit.List as CL
 import Data.Conduit
 
-instance (MonadResource m, MonadLogger m) => PersistUnique (SqlPersistT m) where
-    deleteBy uniq = do
-        conn <- askSqlConn
+instance PersistUniqueImpl SqlBackend where
+    deleteByImpl uniq conn = do
         let sql' = sql conn
             vals = persistUniqueToValues uniq
-        rawExecute sql' vals
+        runReaderT (rawExecute sql' vals) conn
       where
         t = entityDef $ dummyFromUnique uniq
         go = map snd . persistUniqueToFieldNames
@@ -30,8 +32,7 @@ instance (MonadResource m, MonadLogger m) => PersistUnique (SqlPersistT m) where
             , T.intercalate " AND " $ map (go' conn) $ go uniq
             ]
 
-    getBy uniq = do
-        conn <- askSqlConn
+    getByImpl uniq conn = do
         let flds = map (connEscapeName conn . fieldDB) (entityFields t)
         let cols = case entityPrimary t of
                      Just _ -> T.intercalate "," flds
@@ -45,7 +46,7 @@ instance (MonadResource m, MonadLogger m) => PersistUnique (SqlPersistT m) where
                 , sqlClause conn
                 ]
             vals' = persistUniqueToValues uniq
-        rawQuery sql vals' $$ do
+        with (rawQueryResource sql vals' conn) $ \src -> src $$ do
             row <- CL.head
             case row of
                 Nothing -> return Nothing

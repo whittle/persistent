@@ -777,8 +777,10 @@ mkDeleteCascade mps defs = do
 
         return $
             InstanceD
-            [ ClassP ''PersistQuery [VarT $ mkName "m"]
-            , EqualP (ConT ''PersistEntityBackend `AppT` entityT) (ConT ''PersistMonadBackend `AppT` VarT (mkName "m"))
+            [ ClassP ''PersistQuery
+                [ ConT ''PersistEntityBackend `AppT` entityT
+                , VarT $ mkName "m"
+                ]
             ]
             (ConT ''DeleteCascade `AppT` entityT `AppT` VarT (mkName "m"))
             [ FunD 'deleteCascade
@@ -867,9 +869,7 @@ mkMigrate fun allDefs = do
     defs = filter isMigrated allDefs
     isMigrated def = not $ "no-migrate" `elem` entityAttrs def
     typ = ForallT [PlainTV $ mkName "m"]
-            [ ClassP ''MonadBaseControl [ConT ''IO, VarT $ mkName "m"]
-            , ClassP ''MonadIO [VarT $ mkName "m"]
-            , ClassP ''MonadLogger [VarT $ mkName "m"]
+            [ ClassP ''MonadIO [VarT $ mkName "m"]
             ]
             $ ConT ''Migration `AppT` (ConT ''SqlPersistT `AppT` VarT (mkName "m"))
     body :: Q Exp

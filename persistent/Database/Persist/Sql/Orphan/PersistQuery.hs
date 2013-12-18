@@ -8,6 +8,7 @@ module Database.Persist.Sql.Orphan.PersistQuery
     ) where
 
 import Database.Persist
+import Database.Persist.Class.PersistQuery
 import Database.Persist.Sql.Types
 import Database.Persist.Sql.Class
 import Database.Persist.Sql.Raw
@@ -20,18 +21,19 @@ import Data.Int (Int64)
 import Control.Monad.Logger
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
+import Control.Monad.Trans.Resource (with)
 import Control.Exception (throwIO)
 import qualified Data.Conduit.List as CL
 import Data.Conduit
 import Data.ByteString.Char8 (readInteger)
 import Data.Maybe (isJust)
 import Data.List (transpose, inits, find)
+import Control.Monad.Reader (runReaderT)
 
 -- orphaned instance for convenience of modularity
-instance (MonadResource m, MonadLogger m) => PersistQuery (SqlPersistT m) where
-    update _ [] = return ()
-    update k upds = do
-        conn <- askSqlConn
+instance PersistQueryImpl SqlBackend where
+    updateImpl _ [] _ = return ()
+    updateImpl k upds conn = do
         let go'' n Assign = n <> "=?"
             go'' n Add = T.concat [n, "=", n, "+?"]
             go'' n Subtract = T.concat [n, "=", n, "-?"]
@@ -50,14 +52,13 @@ instance (MonadResource m, MonadLogger m) => PersistQuery (SqlPersistT m) where
                 , " WHERE "
                 , wher
                 ]
-        rawExecute sql $
+        flip runReaderT conn $ rawExecute sql $
             map updatePersistValue upds `mappend` (convertKey composite k)
       where
         t = entityDef $ dummyFromKey k
         go x = (fieldDB $ updateFieldDef x, updateUpdate x)
 
-    count filts = do
-        conn <- askSqlConn
+    countImpl filts conn = do
         let wher = if null filts
                     then ""
                     else filterClause False conn filts
@@ -66,7 +67,7 @@ instance (MonadResource m, MonadLogger m) => PersistQuery (SqlPersistT m) where
                 , connEscapeName conn $ entityDB t
                 , wher
                 ]
-        rawQuery sql (getFiltsValues conn filts) $$ do
+        with (rawQueryResource sql (getFiltsValues conn filts) conn) $ \src -> src $$ do
             mm <- CL.head
             case mm of
               Just [PersistInt64 i] -> return $ fromIntegral i
@@ -79,9 +80,8 @@ instance (MonadResource m, MonadLogger m) => PersistQuery (SqlPersistT m) where
       where
         t = entityDef $ dummyFromFilts filts
 
-    selectSource filts opts = do
-        conn <- lift askSqlConn
-        rawQuery (sql conn) (getFiltsValues conn filts) $= CL.mapM parse
+    selectSourceImpl filts opts conn =
+        ($= CL.mapM parse) `fmap` rawQueryResource  (sql conn) (getFiltsValues conn filts) conn
       where
         composite = isJust $ entityPrimary t
         (limit, offset, orders) = limitOffsetOrder opts
@@ -134,9 +134,8 @@ instance (MonadResource m, MonadLogger m) => PersistQuery (SqlPersistT m) where
             , ord conn
             ]
 
-    selectKeys filts opts = do
-        conn <- lift askSqlConn
-        rawQuery (sql conn) (getFiltsValues conn filts) $= CL.mapM parse
+    selectKeysImpl filts opts conn =
+        ($= CL.mapM parse) `fmap` rawQueryResource (sql conn) (getFiltsValues conn filts) conn
       where
         t = entityDef $ dummyFromFilts filts
         cols conn = case entityPrimary t of 
@@ -173,12 +172,12 @@ instance (MonadResource m, MonadLogger m) => PersistQuery (SqlPersistT m) where
                                keyvals = map snd $ filter (\(a, _) -> let ret=isJust (find (== a) pks) in ret) $ zip (map fieldHaskell $ entityFields t) xs
                            in return $ Key $ PersistList keyvals
 
-    deleteWhere filts = do
-        _ <- deleteWhereCount filts
+    deleteWhereImpl filts conn = do
+        _ <- runReaderT (deleteWhereCount filts) conn
         return ()
 
-    updateWhere filts upds = do
-        _ <- updateWhereCount filts upds
+    updateWhereImpl filts upds conn = do
+        _ <- runReaderT (updateWhereCount filts upds) conn
         return ()
 
 -- | Same as 'deleteWhere', but returns the number of rows affected.
@@ -239,7 +238,7 @@ updateFieldDef (Update f _ _) = persistFieldDef f
 dummyFromFilts :: [Filter v] -> Maybe v
 dummyFromFilts _ = Nothing
 
-getFiltsValues :: forall val.  PersistEntity val => Connection -> [Filter val] -> [PersistValue]
+getFiltsValues :: forall val.  PersistEntity val => SqlBackend -> [Filter val] -> [PersistValue]
 getFiltsValues conn = snd . filterClauseHelper False False conn OrNullNo
 
 data OrNull = OrNullYes | OrNullNo
@@ -247,7 +246,7 @@ data OrNull = OrNullYes | OrNullNo
 filterClauseHelper :: PersistEntity val
              => Bool -- ^ include table name?
              -> Bool -- ^ include WHERE?
-             -> Connection
+             -> SqlBackend
              -> OrNull
              -> [Filter val]
              -> (Text, [PersistValue])
@@ -401,14 +400,14 @@ updatePersistValue (Update _ v _) = toPersistValue v
 
 filterClause :: PersistEntity val
              => Bool -- ^ include table name?
-             -> Connection
+             -> SqlBackend
              -> [Filter val]
              -> Text
 filterClause b c = fst . filterClauseHelper b True c OrNullNo
 
 orderClause :: PersistEntity val
             => Bool -- ^ include the table name
-            -> Connection
+            -> SqlBackend
             -> SelectOpt val
             -> Text
 orderClause includeTable conn o =

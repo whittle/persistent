@@ -12,6 +12,8 @@ import Database.Persist.Class.PersistEntity
 
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
+import Control.Monad.Trans.Resource (with)
+import Control.Monad.IO.Class (liftIO)
 
 class PersistEntity a => DeleteCascade a where
     deleteCascadeImpl :: Key a -> PersistEntityBackend a -> IO ()
@@ -23,4 +25,6 @@ class PersistEntity a => DeleteCascade a where
 
 deleteCascadeWhere :: (DeleteCascade a, PersistQuery backend m, backend ~ PersistEntityBackend a)
                    => [Filter a] -> m ()
-deleteCascadeWhere filts = selectKeys filts [] C.$$ CL.mapM_ deleteCascade
+deleteCascadeWhere filts = do
+    backend <- askPersistBackend
+    liftIO $ with (selectKeysImpl filts [] backend) (C.$$ CL.mapM_ (flip deleteCascadeImpl backend))

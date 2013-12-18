@@ -89,11 +89,6 @@ class (MonadIO m, PersistStoreImpl backend) => PersistStore backend m | m -> bac
         backend <- askPersistBackend
         liftIO $ f backend
 
-    runConduitWithBackend :: (backend -> ConduitM a b IO c) -> ConduitM a b m c
-    runConduitWithBackend f = do
-        backend <- lift askPersistBackend
-        transPipe liftIO (f backend)
-
     askPersistBackend :: m backend
 
     -- | Get a record by identifier, if available.
