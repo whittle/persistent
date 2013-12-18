@@ -45,7 +45,6 @@ import Language.Haskell.TH.Quote
 import Language.Haskell.TH.Syntax
 import Data.Char (toLower, toUpper)
 import Control.Monad (forM, (<=<), mzero)
-import Control.Monad.Trans.Control (MonadBaseControl)
 import Control.Monad.IO.Class (MonadIO)
 import qualified System.IO as SIO
 import Data.Text (pack, Text, append, unpack, concat, uncons, cons)
@@ -60,8 +59,8 @@ import Data.Aeson
     , Value (Object), (.:), (.:?)
     )
 import Control.Applicative (pure, (<*>))
-import Control.Monad.Logger (MonadLogger)
 import Database.Persist.Sql (sqlType)
+import Web.PathPieces (PathPiece)
 
 -- | Converts a quasi-quoted syntax into a list of entity definitions, to be
 -- used as input to the template haskell generation code (mkPersist).
@@ -355,14 +354,9 @@ idType :: MkPersistSettings -> Name -> FieldType -> Type
 idType mps backend typ =
     case stripId typ of
         Just typ' ->
-            ConT ''KeyBackend
-            `AppT` backend'
+            ConT ''Key
             `AppT` genericDataType mps typ' (VarT backend)
         Nothing -> ftToType typ
-  where
-    backend'
-        | mpsGeneric mps = VarT backend
-        | otherwise = mpsBackend mps
 
 degen :: [Clause] -> [Clause]
 degen [] =
@@ -568,12 +562,55 @@ mkLensClauses mps t = do
             ]
             $ ConE 'Entity `AppE` VarE keyName `AppE` (ConE (sumConstrName mps t f) `AppE` VarE xName)
 
+mkKeyTypeDec :: MkPersistSettings -> EntityDef SqlType -> Q Dec -- FIXME support for composite keys
+mkKeyTypeDec mps t = do
+    let baseName = unHaskellName (entityHaskell t) ++ "Key"
+        conName = mkName $ unpack baseName
+        fieldName = mkName $ unpack $ "un" ++ baseName
+        keyType
+            | mpsGeneric mps = ConT ''BackendKey `AppT` VarT (mkName "backend")
+            | otherwise      = ConT ''BackendKey `AppT` mpsBackend mps
+    return $ NewtypeInstD
+        []
+        ''Key
+        [genericDataType mps (unHaskellName $ entityHaskell t) (VarT $ mkName "backend")]
+        (RecC
+            conName
+            [(fieldName, NotStrict, keyType)])
+        (if mpsGeneric mps
+            then [] -- FIXME
+            else [''Show, ''Read, ''Eq, ''Ord, ''PathPiece, ''PersistField, ''PersistFieldSql])
+
+mkKeyToValues :: MkPersistSettings -> EntityDef SqlType -> Q Dec -- FIXME support for composite keys
+mkKeyToValues mps t = do
+    let baseName = unHaskellName (entityHaskell t) ++ "Key"
+        fieldName = mkName $ unpack $ "un" ++ baseName
+    e <- [|backendKeyToValues . $(return $ VarE fieldName)|]
+    return $ FunD 'keyToValues $ return $ Clause
+        []
+        (NormalB e)
+        []
+
+mkKeyFromValues :: MkPersistSettings -> EntityDef SqlType -> Q Dec -- FIXME support for composite keys
+mkKeyFromValues mps t = do
+    let baseName = unHaskellName (entityHaskell t) ++ "Key"
+        conName = mkName $ unpack baseName
+    e <- [|fmap $(return $ ConE conName) . backendKeyFromValues|]
+    return $ FunD 'keyFromValues $ return $ Clause
+        []
+        (NormalB e)
+        []
+
 mkEntity :: MkPersistSettings -> EntityDef SqlType -> Q [Dec]
 mkEntity mps t = do
     t' <- lift t
     let nameT = unHaskellName $ entityHaskell t
     let nameS = unpack nameT
-    let clazz = ConT ''PersistEntity `AppT` genericDataType mps (unHaskellName $ entityHaskell t) (VarT $ mkName "backend")
+    let clazz = ConT ''PersistEntity
+                    `AppT` (if mpsGeneric mps
+                                then VarT $ mkName "backend"
+                                else mpsBackend mps)
+                    `AppT` genericDataType mps (unHaskellName $ entityHaskell t) (VarT $ mkName "backend")
     tpf <- mkToPersistFields mps nameS t
     fpv <- mkFromPersistValues mps t
     utv <- mkUniqueToValues $ entityUniques t
@@ -592,6 +629,10 @@ mkEntity mps t = do
         : entityFields t
     toFieldNames <- mkToFieldNames $ entityUniques t
 
+    keyTypeDec <- mkKeyTypeDec mps t
+    keyToValues' <- mkKeyToValues mps t
+    keyFromValues' <- mkKeyFromValues mps t
+
     let addSyn -- FIXME maybe remove this
             | mpsGeneric mps = (:) $
                 TySynD (mkName nameS) [] $
@@ -603,9 +644,12 @@ mkEntity mps t = do
     return $ addSyn $
        dataTypeDec mps t : mconcat fkc `mappend`
       ([ TySynD (mkName $ unpack $ unHaskellName (entityHaskell t) ++ "Id") [] $
-            ConT ''KeyBackend `AppT` mpsBackend mps `AppT` ConT (mkName nameS)
+            ConT ''Key `AppT` ConT (mkName nameS)
       , InstanceD [] clazz $
         [ uniqueTypeDec mps t
+        , keyTypeDec
+        , keyToValues'
+        , keyFromValues'
         , FunD 'entityDef [Clause [WildP] (NormalB t') []]
         , tpf
         , FunD 'fromPersistValues fpv
@@ -621,6 +665,7 @@ mkEntity mps t = do
             (map fst fields)
             []
         , FunD 'persistFieldDef (map snd fields)
+        {- FIXME
         , TySynInstD
             ''PersistEntityBackend
 #if MIN_VERSION_template_haskell(2,9,0)
@@ -631,6 +676,7 @@ mkEntity mps t = do
             [genericDataType mps (unHaskellName $ entityHaskell t) $ VarT $ mkName "backend"]
             (backendDataType mps)
 #endif
+        -}
         , FunD 'persistIdField [Clause [] (NormalB $ ConE $ mkName $ unpack $ unHaskellName (entityHaskell t) ++ "Id") []]
         , FunD 'fieldLens lensClauses
         ]
@@ -646,9 +692,9 @@ mkForeignKeysComposite mps t fdef = do
    
    let flds = map (\(a,_,_,_) -> VarE (fieldName a)) $ foreignFields fdef
    let xs = ListE $ map (\a -> AppE (VarE 'toPersistValue) ((AppE a (VarE entName)))) flds
-   let fn = FunD fname [Clause [VarP entName] (NormalB (AppE (ConE 'Key) (AppE (ConE 'PersistList) xs))) []]
+   let fn = FunD fname [Clause [VarP entName] (NormalB (AppE (VarE 'keyFromValues) xs)) []]
    
-   let t2 = ConT ''KeyBackend `AppT` ConT ''SqlBackend `AppT` ConT reftablename
+   let t2 = ConT ''Key `AppT` ConT reftablename
    let sig = SigD fname $ (ArrowT `AppT` (ConT tablename)) `AppT` t2
    return [sig, fn]
 
@@ -778,7 +824,9 @@ mkDeleteCascade mps defs = do
         return $
             InstanceD
             [ ClassP ''PersistQuery
-                [ ConT ''PersistEntityBackend `AppT` entityT
+                [ if mpsGeneric mps
+                      then VarT $ mkName "backend"
+                      else mpsBackend mps
                 , VarT $ mkName "m"
                 ]
             ]
@@ -1023,10 +1071,7 @@ mkField mps et cd = do
     typ =
         case stripId $ fieldType cd of
             Just ft ->
-                 ConT ''KeyBackend
-                    `AppT` (if mpsGeneric mps
-                                then VarT $ mkName "backend"
-                                else mpsBackend mps)
+                 ConT ''Key
                     `AppT` genericDataType mps ft (VarT $ mkName "backend")
             Nothing -> ftToType $ fieldType cd
 

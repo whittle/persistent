@@ -70,7 +70,7 @@ listToJSON = toStrict . toLazyText . fromValue . toJSON
 mapToJSON :: [(T.Text, PersistValue)] -> T.Text
 mapToJSON = toStrict . toLazyText . fromValue . toJSON
 
-limitOffsetOrder :: PersistEntity val => [SelectOpt val] -> (Int, Int, [SelectOpt val])
+limitOffsetOrder :: PersistEntity backend val => [SelectOpt val] -> (Int, Int, [SelectOpt val])
 limitOffsetOrder opts =
     foldr go (0, 0, []) opts
   where

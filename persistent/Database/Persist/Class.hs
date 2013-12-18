@@ -2,6 +2,7 @@ module Database.Persist.Class
     (
     -- * PersistStore
       PersistStore (..)
+    , PersistStoreImpl (..)
     , getJust
     , belongsTo
     , belongsToJust

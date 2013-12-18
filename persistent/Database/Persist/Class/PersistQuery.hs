@@ -28,7 +28,7 @@ import Control.Monad.Reader (MonadReader)
 class PersistStoreImpl backend => PersistQueryImpl backend where
     -- | Update individual fields on a specific record.
     updateImpl
-        :: (PersistEntity val, backend ~ PersistEntityBackend val)
+        :: PersistEntity backend val
         => Key val -> [Update val] -> backend -> IO ()
 
     -- | Update individual fields on a specific record, and retrieve the
@@ -37,7 +37,7 @@ class PersistStoreImpl backend => PersistQueryImpl backend where
     -- Note that this function will throw an exception if the given key is not
     -- found in the database.
     updateGetImpl
-        :: (PersistEntity val, backend ~ PersistEntityBackend val)
+        :: PersistEntity backend val
         => Key val -> [Update val] -> backend -> IO val
     updateGetImpl key ups backend = do
         updateImpl key ups backend
@@ -45,18 +45,18 @@ class PersistStoreImpl backend => PersistQueryImpl backend where
 
     -- | Update individual fields on any record matching the given criterion.
     updateWhereImpl
-        :: (PersistEntity val, backend ~ PersistEntityBackend val)
+        :: PersistEntity backend val
         => [Filter val] -> [Update val] -> backend -> IO ()
 
     -- | Delete all records matching the given criterion.
     deleteWhereImpl
-        :: (PersistEntity val, backend ~ PersistEntityBackend val)
+        :: PersistEntity backend val
         => [Filter val] -> backend -> IO ()
 
     -- | Get all records matching the given criterion in the specified order.
     -- Returns also the identifiers.
     selectSourceImpl
-        :: (PersistEntity val, backend ~ PersistEntityBackend val)
+        :: PersistEntity backend val
         => [Filter val]
         -> [SelectOpt val]
         -> backend
@@ -64,7 +64,7 @@ class PersistStoreImpl backend => PersistQueryImpl backend where
 
     -- | get just the first record for the criterion
     selectFirstImpl
-        :: (PersistEntity val, backend ~ PersistEntityBackend val)
+        :: PersistEntity backend val
         => [Filter val]
         -> [SelectOpt val]
         -> backend
@@ -74,7 +74,7 @@ class PersistStoreImpl backend => PersistQueryImpl backend where
 
     -- | Get the 'Key's of all records matching the given criterion.
     selectKeysImpl
-        :: (PersistEntity val, backend ~ PersistEntityBackend val)
+        :: PersistEntity backend val
         => [Filter val]
         -> [SelectOpt val]
         -> backend
@@ -82,14 +82,14 @@ class PersistStoreImpl backend => PersistQueryImpl backend where
 
     -- | The total number of records fulfilling the given criterion.
     countImpl
-        :: (PersistEntity val, backend ~ PersistEntityBackend val)
+        :: PersistEntity backend val
         => [Filter val]
         -> backend
         -> IO Int
 
 class (PersistStore backend m, PersistQueryImpl backend) => PersistQuery backend m | m -> backend where
     -- | Update individual fields on a specific record.
-    update :: (PersistEntity val, backend ~ PersistEntityBackend val)
+    update :: PersistEntity backend val
            => Key val -> [Update val] -> m ()
     update k = runWithBackend . updateImpl k
 
@@ -98,29 +98,29 @@ class (PersistStore backend m, PersistQueryImpl backend) => PersistQuery backend
     --
     -- Note that this function will throw an exception if the given key is not
     -- found in the database.
-    updateGet :: (PersistEntity val, backend ~ PersistEntityBackend val)
+    updateGet :: PersistEntity backend val
               => Key val -> [Update val] -> m val
     updateGet k = runWithBackend . updateGetImpl k
 
     -- | Update individual fields on any record matching the given criterion.
-    updateWhere :: (PersistEntity val, backend ~ PersistEntityBackend val)
+    updateWhere :: PersistEntity backend val
                 => [Filter val] -> [Update val] -> m ()
     updateWhere k = runWithBackend . updateWhereImpl k
 
     -- | Delete all records matching the given criterion.
-    deleteWhere :: (PersistEntity val, backend ~ PersistEntityBackend val)
+    deleteWhere :: PersistEntity backend val
                 => [Filter val] -> m ()
     deleteWhere = runWithBackend . deleteWhereImpl
 
     -- | get just the first record for the criterion
-    selectFirst :: (PersistEntity val, backend ~ PersistEntityBackend val)
+    selectFirst :: PersistEntity backend val
                 => [Filter val]
                 -> [SelectOpt val]
                 -> m (Maybe (Entity val))
     selectFirst f = runWithBackend . selectFirstImpl f
 
     -- | The total number of records fulfilling the given criterion.
-    count :: (PersistEntity val, backend ~ PersistEntityBackend val)
+    count :: PersistEntity backend val
           => [Filter val] -> m Int
     count = runWithBackend . countImpl
 
@@ -137,14 +137,14 @@ runConduitWithBackend f = do
 -- | Get all records matching the given criterion in the specified order.
 -- Returns also the identifiers.
 selectSource
-       :: (PersistEntity val, backend ~ PersistEntityBackend val, PersistQueryImpl backend, C.MonadResource m, HasPersistBackend env backend, MonadReader env m)
+       :: (PersistEntity backend val, PersistQueryImpl backend, C.MonadResource m, HasPersistBackend env backend, MonadReader env m)
        => [Filter val]
        -> [SelectOpt val]
        -> C.Source m (Entity val)
 selectSource f = runConduitWithBackend . selectSourceImpl f
 
 -- | Get the 'Key's of all records matching the given criterion.
-selectKeys :: (PersistEntity val, backend ~ PersistEntityBackend val, PersistQueryImpl backend, C.MonadResource m, HasPersistBackend env backend, MonadReader env m)
+selectKeys :: (PersistEntity backend val, PersistQueryImpl backend, C.MonadResource m, HasPersistBackend env backend, MonadReader env m)
            => [Filter val]
            -> [SelectOpt val]
            -> C.Source m (Key val)
@@ -153,7 +153,7 @@ selectKeys f = runConduitWithBackend . selectKeysImpl f
 instance (PersistStore backend m, PersistQueryImpl backend) => PersistQuery backend m
 
 -- | Call 'selectSource' but return the result as a list.
-selectList :: (PersistEntity val, PersistQuery backend m, backend ~ PersistEntityBackend val)
+selectList :: (PersistEntity backend val, PersistQuery backend m)
            => [Filter val]
            -> [SelectOpt val]
            -> m [Entity val]
@@ -162,7 +162,7 @@ selectList a b = do
     liftIO $ with (selectSourceImpl a b backend) (C.$$ CL.consume)
 
 -- | Call 'selectKeys' but return the result as a list.
-selectKeysList :: (PersistEntity val, PersistQuery backend m, backend ~ PersistEntityBackend val)
+selectKeysList :: (PersistEntity backend val, PersistQuery backend m)
                => [Filter val]
                -> [SelectOpt val]
                -> m [Key val]

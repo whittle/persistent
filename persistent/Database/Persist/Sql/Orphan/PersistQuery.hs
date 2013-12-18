@@ -1,5 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Database.Persist.Sql.Orphan.PersistQuery
     ( deleteWhereCount
@@ -13,7 +14,6 @@ import Database.Persist.Sql.Types
 import Database.Persist.Sql.Class
 import Database.Persist.Sql.Raw
 import Database.Persist.Sql.Orphan.PersistStore ()
-import Database.Persist.Sql.Internal (convertKey)
 import qualified Data.Text as T
 import Data.Text (Text)
 import Data.Monoid (Monoid (..), (<>))
@@ -53,7 +53,7 @@ instance PersistQueryImpl SqlBackend where
                 , wher
                 ]
         flip runReaderT conn $ rawExecute sql $
-            map updatePersistValue upds `mappend` (convertKey composite k)
+            map updatePersistValue upds `mappend` keyToValues k
       where
         t = entityDef $ dummyFromKey k
         go x = (fieldDB $ updateFieldDef x, updateUpdate x)
@@ -100,20 +100,22 @@ instance PersistQueryImpl SqlBackend where
                     Right row -> return row
 
         t = entityDef $ dummyFromFilts filts
-        fromPersistValues' (PersistInt64 x:xs) = 
+        fromPersistValues' (k:xs) =
             case fromPersistValues xs of
                 Left e -> Left e
-                Right xs' -> Right (Entity (Key $ PersistInt64 x) xs')
-        fromPersistValues' (PersistDouble x:xs) = -- oracle returns Double 
-            case fromPersistValues xs of
-                Left e -> Left e
-                Right xs' -> Right (Entity (Key $ PersistInt64 (truncate x)) xs') -- convert back to int64
+                Right xs' ->
+                    case keyFromValues [k] of
+                        Nothing -> error $ "fromPersistValues': keyFromValues failed on " ++ show k
+                        Just k' -> Right (Entity k' xs')
         fromPersistValues' xs = Left $ T.pack ("error in fromPersistValues' xs=" ++ show xs)
 
         fromPersistValuesComposite' keyvals xs =
             case fromPersistValues xs of
                 Left e -> Left e
-                Right xs' -> Right (Entity (Key $ PersistList keyvals) xs')
+                Right xs' ->
+                    case keyFromValues keyvals of
+                        Nothing -> error "fromPersistValuesComposite': keyFromValues failed"
+                        Just key -> Right (Entity key xs')
 
         wher conn = if null filts
                     then ""
@@ -161,16 +163,20 @@ instance PersistQueryImpl SqlBackend where
                 [] -> ""
                 ords -> " ORDER BY " <> T.intercalate "," ords
 
-        parse xs = case entityPrimary t of
-                      Nothing -> 
+        parse xs = do
+            keyvals <- case entityPrimary t of
+                      Nothing -> do
                         case xs of
-                           [PersistInt64 x] -> return $ Key $ PersistInt64 x
-                           [PersistDouble x] -> return $ Key $ PersistInt64 (truncate x) -- oracle returns Double 
+                           [PersistInt64 x] -> return [PersistInt64 x]
+                           [PersistDouble x] -> return [PersistInt64 (truncate x)] -- oracle returns Double 
                            _ -> liftIO $ throwIO $ PersistMarshalError $ "Unexpected in selectKeys False: " <> T.pack (show xs)
                       Just pdef -> 
                            let pks = map fst $ primaryFields pdef
                                keyvals = map snd $ filter (\(a, _) -> let ret=isJust (find (== a) pks) in ret) $ zip (map fieldHaskell $ entityFields t) xs
-                           in return $ Key $ PersistList keyvals
+                           in  return keyvals
+            case keyFromValues keyvals of
+                Just k -> return k
+                Nothing -> error "selectKeysImpl: keyFromValues failed"
 
     deleteWhereImpl filts conn = do
         _ <- runReaderT (deleteWhereCount filts) conn
@@ -183,7 +189,7 @@ instance PersistQueryImpl SqlBackend where
 -- | Same as 'deleteWhere', but returns the number of rows affected.
 --
 -- Since 1.1.5
-deleteWhereCount :: (PersistEntity val, MonadSqlPersist m)
+deleteWhereCount :: (PersistEntity SqlBackend val, MonadSqlPersist m)
                  => [Filter val]
                  -> m Int64
 deleteWhereCount filts = do
@@ -202,7 +208,7 @@ deleteWhereCount filts = do
 -- | Same as 'updateWhere', but returns the number of rows affected.
 --
 -- Since 1.1.5
-updateWhereCount :: (PersistEntity val, MonadSqlPersist m)
+updateWhereCount :: (PersistEntity SqlBackend val, MonadSqlPersist m)
                  => [Filter val]
                  -> [Update val]
                  -> m Int64
@@ -232,18 +238,18 @@ updateWhereCount filts upds = do
     go' conn (x, pu) = go'' (connEscapeName conn x) pu
     go x = (fieldDB $ updateFieldDef x, updateUpdate x)
 
-updateFieldDef :: PersistEntity v => Update v -> FieldDef SqlType
+updateFieldDef :: PersistEntity SqlBackend v => Update v -> FieldDef SqlType
 updateFieldDef (Update f _ _) = persistFieldDef f
 
 dummyFromFilts :: [Filter v] -> Maybe v
 dummyFromFilts _ = Nothing
 
-getFiltsValues :: forall val.  PersistEntity val => SqlBackend -> [Filter val] -> [PersistValue]
+getFiltsValues :: forall val.  PersistEntity SqlBackend val => SqlBackend -> [Filter val] -> [PersistValue]
 getFiltsValues conn = snd . filterClauseHelper False False conn OrNullNo
 
 data OrNull = OrNullYes | OrNullNo
 
-filterClauseHelper :: PersistEntity val
+filterClauseHelper :: PersistEntity SqlBackend val
              => Bool -- ^ include table name?
              -> Bool -- ^ include WHERE?
              -> SqlBackend
@@ -398,14 +404,14 @@ filterClauseHelper includeTable includeWhere conn orNull filters =
 updatePersistValue :: Update v -> PersistValue
 updatePersistValue (Update _ v _) = toPersistValue v
 
-filterClause :: PersistEntity val
+filterClause :: PersistEntity SqlBackend val
              => Bool -- ^ include table name?
              -> SqlBackend
              -> [Filter val]
              -> Text
 filterClause b c = fst . filterClauseHelper b True c OrNullNo
 
-orderClause :: PersistEntity val
+orderClause :: PersistEntity SqlBackend val
             => Bool -- ^ include the table name
             -> SqlBackend
             -> SelectOpt val
@@ -427,7 +433,7 @@ orderClause includeTable conn o =
             else id)
         $ connEscapeName conn $ fieldDB x
 
-dummyFromKey :: KeyBackend SqlBackend v -> Maybe v
+dummyFromKey :: Key v -> Maybe v
 dummyFromKey _ = Nothing
 
 -- | Generates sql for limit and offset for postgres, sqlite and mysql.

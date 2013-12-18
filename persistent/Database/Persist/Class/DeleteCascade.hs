@@ -1,6 +1,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FunctionalDependencies #-}
 module Database.Persist.Class.DeleteCascade
     ( DeleteCascade (..)
     , deleteCascadeWhere
@@ -15,16 +16,16 @@ import qualified Data.Conduit.List as CL
 import Control.Monad.Trans.Resource (with)
 import Control.Monad.IO.Class (liftIO)
 
-class PersistEntity a => DeleteCascade a where
-    deleteCascadeImpl :: Key a -> PersistEntityBackend a -> IO ()
+class PersistEntity backend entity => DeleteCascade backend entity | entity -> backend where
+    deleteCascadeImpl :: Key entity -> backend -> IO ()
 
-    deleteCascade :: PersistStore (PersistEntityBackend a) m
-                  => Key a
+    deleteCascade :: PersistStore backend m
+                  => Key entity
                   -> m ()
     deleteCascade = runWithBackend . deleteCascadeImpl
 
-deleteCascadeWhere :: (DeleteCascade a, PersistQuery backend m, backend ~ PersistEntityBackend a)
-                   => [Filter a] -> m ()
+deleteCascadeWhere :: (DeleteCascade backend entity, PersistQuery backend m)
+                   => [Filter entity] -> m ()
 deleteCascadeWhere filts = do
     backend <- askPersistBackend
     liftIO $ with (selectKeysImpl filts [] backend) (C.$$ CL.mapM_ (flip deleteCascadeImpl backend))

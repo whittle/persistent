@@ -46,18 +46,17 @@ instance PersistUniqueImpl SqlBackend where
                 , sqlClause conn
                 ]
             vals' = persistUniqueToValues uniq
-        with (rawQueryResource sql vals' conn) $ \src -> src $$ do
+        with (rawQueryResource sql vals' conn) $ \src -> src $$ do -- FIXME broken for composite keys
             row <- CL.head
             case row of
                 Nothing -> return Nothing
-                Just (PersistInt64 k:vals) ->
+                Just (k:vals) ->
                     case fromPersistValues vals of
                         Left s -> error $ T.unpack s
-                        Right x -> return $ Just (Entity (Key $ PersistInt64 k) x)
-                Just (PersistDouble k:vals) ->   -- oracle
-                    case fromPersistValues vals of
-                        Left s -> error $ T.unpack s
-                        Right x -> return $ Just (Entity (Key $ PersistInt64 $ truncate k) x)
+                        Right x ->
+                            case keyFromValues [k] of
+                                Just k' -> return $ Just (Entity k' x)
+                                Nothing -> error "getByImpl: keyFromValues failed"
                 Just xs -> error $ "Database.Persist.GenericSql: Bad list in getBy xs="++show xs
       where
         sqlClause conn =

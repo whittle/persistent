@@ -3,7 +3,7 @@
 -- | Intended for creating new backends.
 module Database.Persist.Sql.Internal
     ( mkColumns
-    , convertKey
+    --, convertKey
     ) where
 
 import Database.Persist.Types
@@ -80,7 +80,9 @@ resolveTableName (e:es) hn
     | entityHaskell e == hn = entityDB e
     | otherwise = resolveTableName es hn
 
+{- FIXME
 convertKey :: Bool -> KeyBackend t t1 -> [PersistValue]
 convertKey True (Key (PersistList fks)) = fks
 convertKey False (Key ret@(PersistInt64 _)) = [ret]
 convertKey composite k = error $ "invalid key type " ++ show k ++ " composite=" ++ show composite
+-}
