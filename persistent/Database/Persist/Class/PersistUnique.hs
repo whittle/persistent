@@ -1,7 +1,12 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE TypeFamilies, FlexibleContexts #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
 module Database.Persist.Class.PersistUnique
-    ( PersistUnique (..)
+    ( PersistUniqueImpl (..)
+    , PersistUnique (..)
     , getByValue
     , insertBy
     , replaceUnique
@@ -12,29 +17,37 @@ import qualified Prelude
 import Prelude hiding ((++), show)
 
 import Control.Monad (liftM)
-import Control.Monad.Trans.Error (Error (..))
-import Control.Monad.Trans.Class (lift)
-import Data.Monoid (Monoid)
 import Data.List ((\\))
 
-import Data.Conduit.Internal (Pipe)
-import Control.Monad.Logger (LoggingT)
-import Control.Monad.Trans.Identity ( IdentityT)
-import Control.Monad.Trans.List     ( ListT    )
-import Control.Monad.Trans.Maybe    ( MaybeT   )
-import Control.Monad.Trans.Error    ( ErrorT   )
-import Control.Monad.Trans.Reader   ( ReaderT  )
-import Control.Monad.Trans.Cont     ( ContT  )
-import Control.Monad.Trans.State    ( StateT   )
-import Control.Monad.Trans.Writer   ( WriterT  )
-import Control.Monad.Trans.RWS      ( RWST     )
-import Control.Monad.Trans.Resource ( ResourceT)
-
-import qualified Control.Monad.Trans.RWS.Strict    as Strict ( RWST   )
-import qualified Control.Monad.Trans.State.Strict  as Strict ( StateT )
-import qualified Control.Monad.Trans.Writer.Strict as Strict ( WriterT )
 import Database.Persist.Class.PersistStore
 import Database.Persist.Class.PersistEntity
+
+class PersistStoreImpl backend => PersistUniqueImpl backend where
+    -- | Get a record by unique key, if available. Returns also the identifier.
+    getByImpl :: (backend ~ PersistEntityBackend val, PersistEntity val)
+              => Unique val
+              -> backend
+              -> IO (Maybe (Entity val))
+
+    -- | Delete a specific record by unique key. Does nothing if no record
+    -- matches.
+    deleteByImpl :: (backend ~ PersistEntityBackend val, PersistEntity val)
+                 => Unique val
+                 -> backend
+                 -> IO ()
+
+    -- | Like 'insert', but returns 'Nothing' when the record
+    -- couldn't be inserted because of a uniqueness constraint.
+    insertUniqueImpl
+        :: (backend ~ PersistEntityBackend val, PersistEntity val)
+        => val
+        -> backend
+        -> IO (Maybe (Key val))
+    insertUniqueImpl datum backend = do
+        conflict <- checkUniqueImpl datum backend
+        case conflict of
+          Nothing -> Just `liftM` insertImpl datum backend
+          Just _ -> return Nothing
 
 -- | Queries against unique keys (other than the id).
 --
@@ -48,29 +61,28 @@ import Database.Persist.Class.PersistEntity
 --  * there is some fragility to trying to catch the correct exception and determing the column of failure.
 --
 --  * an exception will automatically abort the current SQL transaction
-class PersistStore m => PersistUnique m where
+class (PersistStore backend m, PersistUniqueImpl backend) => PersistUnique backend m | m -> backend where
     -- | Get a record by unique key, if available. Returns also the identifier.
-    getBy :: (PersistEntityBackend val ~ PersistMonadBackend m, PersistEntity val) => Unique val -> m (Maybe (Entity val))
+    getBy :: (backend ~ PersistEntityBackend val, PersistEntity val) => Unique val -> m (Maybe (Entity val))
+    getBy = runWithBackend . getByImpl
 
     -- | Delete a specific record by unique key. Does nothing if no record
     -- matches.
-    deleteBy :: (PersistEntityBackend val ~ PersistMonadBackend m, PersistEntity val) => Unique val -> m ()
+    deleteBy :: (backend ~ PersistEntityBackend val, PersistEntity val) => Unique val -> m ()
+    deleteBy = runWithBackend . deleteByImpl
 
     -- | Like 'insert', but returns 'Nothing' when the record
     -- couldn't be inserted because of a uniqueness constraint.
-    insertUnique :: (PersistEntityBackend val ~ PersistMonadBackend m, PersistEntity val) => val -> m (Maybe (Key val))
-    insertUnique datum = do
-        conflict <- checkUnique datum
-        case conflict of
-          Nothing -> Just `liftM` insert datum
-          Just _ -> return Nothing
+    insertUnique :: (backend ~ PersistEntityBackend val, PersistEntity val) => val -> m (Maybe (Key val))
+    insertUnique = runWithBackend . insertUniqueImpl
+
+instance (PersistStore backend m, PersistUniqueImpl backend) => PersistUnique backend m
 
 -- | Insert a value, checking for conflicts with any unique constraints.  If a
 -- duplicate exists in the database, it is returned as 'Left'. Otherwise, the
 -- new 'Key is returned as 'Right'.
-insertBy :: (PersistEntity val, PersistUnique m, PersistEntityBackend val ~ PersistMonadBackend m)
+insertBy :: (PersistEntity val, PersistUnique backend m, backend ~ PersistEntityBackend val)
          => val -> m (Either (Entity val) (Key val))
-
 insertBy val = do
     res <- getByValue val
     case res of
@@ -81,16 +93,19 @@ insertBy val = do
 -- of a 'Unique' value. Returns a value matching /one/ of the unique keys. This
 -- function makes the most sense on entities with a single 'Unique'
 -- constructor.
-getByValue :: (PersistEntity value, PersistUnique m, PersistEntityBackend value ~ PersistMonadBackend m)
+getByValue :: (PersistEntity value, PersistUnique backend m, backend ~ PersistEntityBackend value)
            => value -> m (Maybe (Entity value))
 getByValue = checkUniques . persistUniqueKeys
-  where
-    checkUniques [] = return Nothing
-    checkUniques (x:xs) = do
-        y <- getBy x
-        case y of
-            Nothing -> checkUniques xs
-            Just z -> return $ Just z
+
+checkUniques :: (PersistEntity value, PersistUnique backend m, backend ~ PersistEntityBackend value)
+             => [Unique value]
+             -> m (Maybe (Entity value))
+checkUniques [] = return Nothing
+checkUniques (x:xs) = do
+    y <- getBy x
+    case y of
+        Nothing -> checkUniques xs
+        Just z -> return $ Just z
 
 
 -- | Attempt to replace the record of the given key with the given new record.
@@ -99,7 +114,7 @@ getByValue = checkUniques . persistUniqueKeys
 -- If uniqueness is violated, return a 'Just' with the 'Unique' violation
 --
 -- Since 1.2.2.0
-replaceUnique :: (Eq record, Eq (Unique record), PersistEntityBackend record ~ PersistMonadBackend m, PersistEntity record, PersistStore m, PersistUnique m)
+replaceUnique :: (Eq record, Eq (Unique record), backend ~ PersistEntityBackend record, PersistEntity record, PersistUnique backend m)
               => Key record -> record -> m (Maybe (Unique record))
 replaceUnique key datumNew = getJust key >>= replaceOriginal
   where
@@ -118,39 +133,28 @@ replaceUnique key datumNew = getJust key >>= replaceOriginal
 --
 -- Returns 'Nothing' if the entity would be unique, and could thus safely be inserted.
 -- on a conflict returns the conflicting key
-checkUnique :: (PersistEntityBackend record ~ PersistMonadBackend m, PersistEntity record, PersistUnique m)
+checkUnique :: (backend ~ PersistEntityBackend record, PersistEntity record, PersistUnique backend m)
             => record -> m (Maybe (Unique record))
-checkUnique = checkUniqueKeys . persistUniqueKeys
+checkUnique = runWithBackend . checkUniqueImpl
 
-checkUniqueKeys :: (PersistEntity record, PersistUnique m, PersistEntityBackend record ~ PersistMonadBackend m)
+checkUniqueImpl :: (backend ~ PersistEntityBackend record, PersistEntity record, PersistUniqueImpl backend)
+                => record
+                -> backend
+                -> IO (Maybe (Unique record))
+checkUniqueImpl = checkUniqueKeysImpl . persistUniqueKeys
+
+checkUniqueKeys :: (PersistEntity record, PersistUnique backend m, backend ~ PersistEntityBackend record)
                 => [Unique record] -> m (Maybe (Unique record))
-checkUniqueKeys [] = return Nothing
-checkUniqueKeys (x:xs) = do
-    y <- getBy x
+checkUniqueKeys = runWithBackend . checkUniqueKeysImpl
+
+checkUniqueKeysImpl
+    :: (PersistEntity record, PersistUniqueImpl backend, backend ~ PersistEntityBackend record)
+    => [Unique record]
+    -> backend
+    -> IO (Maybe (Unique record))
+checkUniqueKeysImpl [] _ = return Nothing
+checkUniqueKeysImpl (x:xs) backend = do
+    y <- getByImpl x backend
     case y of
-        Nothing -> checkUniqueKeys xs
+        Nothing -> checkUniqueKeysImpl xs backend
         Just _ -> return (Just x)
-
-#define DEF(T) { getBy = lift . getBy; deleteBy = lift . deleteBy; insertUnique = lift . insertUnique }
-#define GO(T) instance (PersistUnique m) => PersistUnique (T m) where DEF(T)
-#define GOX(X, T) instance (X, PersistUnique m) => PersistUnique (T m) where DEF(T)
-
-GO(LoggingT)
-GO(IdentityT)
-GO(ListT)
-GO(MaybeT)
-GOX(Error e, ErrorT e)
-GO(ReaderT r)
-GO(ContT r)
-GO(StateT s)
-GO(ResourceT)
-GO(Pipe l i o u)
-GOX(Monoid w, WriterT w)
-GOX(Monoid w, RWST r w s)
-GOX(Monoid w, Strict.RWST r w s)
-GO(Strict.StateT s)
-GOX(Monoid w, Strict.WriterT w)
-
-#undef DEF
-#undef GO
-#undef GOX

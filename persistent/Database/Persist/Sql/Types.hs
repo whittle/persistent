@@ -9,8 +9,8 @@
 module Database.Persist.Sql.Types where
 
 import Control.Exception (Exception)
-import Control.Monad.Trans.Resource (MonadResource (..), MonadThrow (..), ResourceT)
-import Control.Monad.Logger (MonadLogger (..), NoLoggingT)
+import Control.Monad.Trans.Resource (MonadResource (..), MonadThrow (..), ResourceT, Resource)
+import Control.Monad.Logger (MonadLogger (..), LogFunc, HasLogFunc (..))
 import Control.Monad.Trans.Control
 import Control.Monad.Trans.Class (MonadTrans (..))
 import Control.Monad.IO.Class (MonadIO (..))
@@ -37,7 +37,7 @@ data InsertSqlResult = ISRSingle Text
                      | ISRInsertGet Text Text
                      | ISRManyKeys Text [PersistValue]
 
-data Connection = Connection
+data SqlBackend {-rawConn -}= SqlBackend
     { connPrepare :: Text -> IO Statement
     -- | table name, column names, id name, either 1 or 2 statements to run
     , connInsertSql :: EntityDef SqlType -> [PersistValue] -> InsertSqlResult
@@ -55,15 +55,18 @@ data Connection = Connection
     , connNoLimit :: Text
     , connRDBMS :: Text
     , connLimitOffset :: (Int,Int) -> Bool -> Text -> Text
+    , connLogFunc :: LogFunc
+    -- , connRaw :: rawConn
     }
+
+instance HasLogFunc SqlBackend where
+    logFunc f sb = fmap (\lf -> sb { connLogFunc = lf }) (f (connLogFunc sb))
 
 data Statement = Statement
     { stmtFinalize :: IO ()
     , stmtReset :: IO ()
     , stmtExecute :: [PersistValue] -> IO Int64
-    , stmtQuery :: forall m. MonadResource m
-                => [PersistValue]
-                -> Source m [PersistValue]
+    , stmtQuery :: [PersistValue] -> Resource (Source IO [PersistValue])
     }
 
 data Column = Column
@@ -82,36 +85,12 @@ data PersistentSqlException = StatementAlreadyFinalized Text
     deriving (Typeable, Show)
 instance Exception PersistentSqlException
 
-data SqlBackend
-
-newtype SqlPersistT m a = SqlPersistT { unSqlPersistT :: ReaderT Connection m a }
-    deriving (Monad, MonadIO, MonadTrans, Functor, Applicative, MonadPlus)
+type SqlPersistT = ReaderT SqlBackend
 
 type SqlPersist = SqlPersistT
 {-# DEPRECATED SqlPersist "Please use SqlPersistT instead" #-}
 
-type SqlPersistM = SqlPersistT (NoLoggingT (ResourceT IO))
-
-instance MonadThrow m => MonadThrow (SqlPersistT m) where
-    monadThrow = lift . monadThrow
-
-instance MonadBase backend m => MonadBase backend (SqlPersistT m) where
-    liftBase = lift . liftBase
-
-instance MonadBaseControl backend m => MonadBaseControl backend (SqlPersistT m) where
-     newtype StM (SqlPersistT m) a = StMSP {unStMSP :: ComposeSt SqlPersistT m a}
-     liftBaseWith = defaultLiftBaseWith StMSP
-     restoreM     = defaultRestoreM   unStMSP
-instance MonadTransControl SqlPersistT where
-    newtype StT SqlPersistT a = StReader {unStReader :: a}
-    liftWith f = SqlPersistT $ ReaderT $ \r -> f $ \t -> liftM StReader $ runReaderT (unSqlPersistT t) r
-    restoreT = SqlPersistT . ReaderT . const . liftM unStReader
-
-instance MonadResource m => MonadResource (SqlPersistT m) where
-    liftResourceT = lift . liftResourceT
-
-instance MonadLogger m => MonadLogger (SqlPersistT m) where
-    monadLoggerLog a b c = lift . monadLoggerLog a b c
+type SqlPersistM = SqlPersistT IO
 
 type Sql = Text
 
@@ -120,7 +99,7 @@ type CautiousMigration = [(Bool, Sql)]
 
 type Migration m = WriterT [Text] (WriterT CautiousMigration m) ()
 
-type ConnectionPool = Pool Connection
+type ConnectionPool = Pool SqlBackend
 
 instance PathPiece (KeyBackend SqlBackend entity) where
     toPathPiece (Key (PersistInt64 i)) = toPathPiece i

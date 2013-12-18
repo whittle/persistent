@@ -1,8 +1,10 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Database.Persist.Sql.Raw where
 
 import Database.Persist
+import Database.Persist.Class.PersistStore (HasPersistBackend)
 import Database.Persist.Sql.Types
 import Database.Persist.Sql.Class
 import qualified Data.Map as Map
@@ -10,31 +12,39 @@ import Control.Monad.IO.Class (liftIO)
 import Data.IORef (writeIORef, readIORef, newIORef)
 import Control.Exception (throwIO)
 import Control.Monad (when, liftM)
+import Control.Monad.Reader (MonadReader)
 import Data.Text (Text, pack)
 import Control.Monad.Logger (logDebugS)
 import Data.Int (Int64)
 import Control.Monad.Trans.Class (lift)
 import qualified Data.Text as T
 import Data.Conduit
+import Control.Monad.Trans.Resource (allocateResource, release)
+import Control.Monad.Reader (runReaderT)
 
 rawQuery :: (MonadSqlPersist m, MonadResource m)
          => Text
          -> [PersistValue]
          -> Source m [PersistValue]
 rawQuery sql vals = do
-    lift $ $logDebugS (pack "SQL") $ pack $ show sql ++ " " ++ show vals
     conn <- lift askSqlConn
+    runReaderT ($logDebugS (pack "SQL") $ pack $ show sql ++ " " ++ show vals) (connLogFunc conn)
     bracketP
         (getStmtConn conn sql)
         stmtReset
-        (flip stmtQuery vals)
+        (\stmt -> do
+            (releaseKey, src) <- allocateResource $ stmtQuery stmt vals
+            transPipe liftIO src
+            release releaseKey
+            )
 
 rawExecute :: MonadSqlPersist m => Text -> [PersistValue] -> m ()
 rawExecute x y = liftM (const ()) $ rawExecuteCount x y
 
 rawExecuteCount :: MonadSqlPersist m => Text -> [PersistValue] -> m Int64
 rawExecuteCount sql vals = do
-    $logDebugS (pack "SQL") $ pack $ show sql ++ " " ++ show vals
+    conn <- askSqlConn
+    runReaderT ($logDebugS (pack "SQL") $ pack $ show sql ++ " " ++ show vals) (connLogFunc conn)
     stmt <- getStmt sql
     res <- liftIO $ stmtExecute stmt vals
     liftIO $ stmtReset stmt
@@ -45,7 +55,7 @@ getStmt sql = do
     conn <- askSqlConn
     liftIO $ getStmtConn conn sql
 
-getStmtConn :: Connection -> Text -> IO Statement
+getStmtConn :: SqlBackend -> Text -> IO Statement
 getStmtConn conn sql = do
     smap <- liftIO $ readIORef $ connStmtMap conn
     case Map.lookup sql smap of
@@ -106,7 +116,7 @@ rawSql :: (RawSql a, MonadSqlPersist m, MonadResource m)
        -> m [a]
 rawSql stmt = run
     where
-      getType :: (x -> m [a]) -> a
+      getType :: (y -> m [a]) -> a
       getType = error "rawSql.getType"
 
       x = getType run
