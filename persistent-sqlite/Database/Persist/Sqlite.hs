@@ -20,33 +20,32 @@ import qualified Database.Sqlite as Sqlite
 
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Trans.Resource (Resource, mkResource, with)
-import Control.Monad.Logger (LogFunc, MonadLogger, runNoLoggingT)
+import Control.Monad.Reader (MonadReader, runReaderT)
+import Control.Monad.Logger (LogFunc, runNoLoggingT, HasLogFunc)
 import Data.List (intercalate)
 import Data.IORef
 import qualified Data.Map as Map
 import Control.Monad.Trans.Control (control)
 import qualified Control.Exception as E
 import Data.Text (Text, pack)
-import Control.Monad (mzero)
 import Data.Aeson
 import qualified Data.Text as T
 import Data.Conduit
 import qualified Data.Conduit.List as CL
 import Control.Applicative
 import Data.Int (Int64)
-import Control.Monad ((>=>))
 import Control.Monad.Trans.Class (lift)
 
-createSqlitePool :: (MonadIO m, MonadLogger m) => Text -> Int -> m ConnectionPool
+createSqlitePool :: (MonadIO m, MonadReader env m, HasLogFunc env) => Text -> Int -> m ConnectionPool
 createSqlitePool s = createSqlPool $ open' s
 
-withSqlitePool :: (MonadBaseControl IO m, MonadIO m, MonadLogger m)
+withSqlitePool :: (MonadIO m, MonadReader env m, HasLogFunc env)
                => Text
                -> Int -- ^ number of connections to open
                -> (ConnectionPool -> m a) -> m a
 withSqlitePool = withSqlPool . open'
 
-withSqliteConn :: (MonadBaseControl IO m, MonadIO m, MonadLogger m)
+withSqliteConn :: (MonadBaseControl IO m, MonadReader env m, HasLogFunc env)
                => Text -> (SqlBackend -> m a) -> m a
 withSqliteConn = withSqlConn . open'
 
@@ -331,17 +330,15 @@ data SqliteConf = SqliteConf
     , sqlPoolSize :: Int
     }
 
-{- FIXME
 instance PersistConfig SqliteConf where
-    type PersistConfigBackend SqliteConf = SqlPersistT
+    type PersistConfigBackend SqliteConf = SqlBackend
     type PersistConfigPool SqliteConf = ConnectionPool
-    createPoolConfig (SqliteConf cs size) = createSqlitePool cs size
+    type PersistConfigCreateArg SqliteConf = LogFunc
+    createPoolConfig lf (SqliteConf cs size) = runReaderT (createSqlitePool cs size) lf
     runPool _ = runSqlPool
-    loadConfig (Object o) =
+    loadConfig = withObject "SqliteConf" $ \o ->
         SqliteConf <$> o .: "database"
                    <*> o .: "poolsize"
-    loadConfig _ = mzero
--}
 
 finally :: MonadBaseControl IO m
         => m a -- ^ computation to run first

@@ -18,9 +18,7 @@ import qualified Data.Text as T
 import Data.Text (Text)
 import Data.Monoid (Monoid (..), (<>))
 import Data.Int (Int64)
-import Control.Monad.Logger
 import Control.Monad.IO.Class
-import Control.Monad.Trans.Class
 import Control.Monad.Trans.Resource (with)
 import Control.Exception (throwIO)
 import qualified Data.Conduit.List as CL
@@ -40,7 +38,6 @@ instance PersistQueryImpl SqlBackend where
             go'' n Multiply = T.concat [n, "=", n, "*?"]
             go'' n Divide = T.concat [n, "=", n, "/?"]
         let go' (x, pu) = go'' (connEscapeName conn x) pu
-        let composite = isJust $ entityPrimary t
         let wher = case entityPrimary t of
                 Just pdef -> T.intercalate " AND " $ map (\fld -> connEscapeName conn (snd fld) <> "=? ") $ primaryFields pdef
                 Nothing   -> connEscapeName conn (entityID t) <> "=?"
@@ -81,7 +78,7 @@ instance PersistQueryImpl SqlBackend where
         t = entityDef $ dummyFromFilts filts
 
     selectSourceImpl filts opts conn =
-        ($= CL.mapM parse) `fmap` rawQueryResource  (sql conn) (getFiltsValues conn filts) conn
+        ($= CL.mapM parse) `fmap` rawQueryResource  sql (getFiltsValues conn filts) conn
       where
         composite = isJust $ entityPrimary t
         (limit, offset, orders) = limitOffsetOrder opts
@@ -117,48 +114,48 @@ instance PersistQueryImpl SqlBackend where
                         Nothing -> error "fromPersistValuesComposite': keyFromValues failed"
                         Just key -> Right (Entity key xs')
 
-        wher conn = if null filts
+        wher = if null filts
                     then ""
                     else filterClause False conn filts
-        ord conn =
+        ord =
             case map (orderClause False conn) orders of
                 [] -> ""
                 ords -> " ORDER BY " <> T.intercalate "," ords
-        cols conn = T.intercalate ","
-                  $ ((if composite then [] else [connEscapeName conn $ entityID t]) 
-                  <> map (connEscapeName conn . fieldDB) (entityFields t))
-        sql conn = connLimitOffset conn (limit,offset) (not (null orders)) $ mconcat
+        cols = T.intercalate ","
+             $ ((if composite then [] else [connEscapeName conn $ entityID t]) 
+             <> map (connEscapeName conn . fieldDB) (entityFields t))
+        sql = connLimitOffset conn (limit,offset) (not (null orders)) $ mconcat
             [ "SELECT "
-            , cols conn
+            , cols
             , " FROM "
             , connEscapeName conn $ entityDB t
-            , wher conn
-            , ord conn
+            , wher
+            , ord
             ]
 
     selectKeysImpl filts opts conn =
-        ($= CL.mapM parse) `fmap` rawQueryResource (sql conn) (getFiltsValues conn filts) conn
+        ($= CL.mapM parse) `fmap` rawQueryResource sql (getFiltsValues conn filts) conn
       where
         t = entityDef $ dummyFromFilts filts
-        cols conn = case entityPrimary t of 
+        cols = case entityPrimary t of 
                      Just pdef -> T.intercalate "," $ map (connEscapeName conn . snd) $ primaryFields pdef
                      Nothing   -> connEscapeName conn $ entityID t
                       
-        wher conn = if null filts
+        wher = if null filts
                     then ""
                     else filterClause False conn filts
-        sql conn = connLimitOffset conn (limit,offset) (not (null orders)) $ mconcat
+        sql = connLimitOffset conn (limit,offset) (not (null orders)) $ mconcat
             [ "SELECT "
-            , cols conn
+            , cols
             , " FROM "
             , connEscapeName conn $ entityDB t
-            , wher conn
-            , ord conn
+            , wher
+            , ord
             ]
 
         (limit, offset, orders) = limitOffsetOrder opts
 
-        ord conn =
+        ord =
             case map (orderClause False conn) orders of
                 [] -> ""
                 ords -> " ORDER BY " <> T.intercalate "," ords

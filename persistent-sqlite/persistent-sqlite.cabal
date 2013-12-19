@@ -28,6 +28,7 @@ library
                    , conduit                 >= 0.5.3
                    , monad-logger            >= 0.2.4
                    , resourcet
+                   , mtl
     exposed-modules: Database.Sqlite
                      Database.Persist.Sqlite
     ghc-options:     -Wall

@@ -5,12 +5,10 @@ module Database.Persist.Sql.Orphan.PersistUnique () where
 import Database.Persist
 import Database.Persist.Class.PersistUnique
 import Database.Persist.Sql.Types
-import Database.Persist.Sql.Class
 import Database.Persist.Sql.Raw
 import Database.Persist.Sql.Orphan.PersistStore ()
 import qualified Data.Text as T
 import Data.Monoid ((<>))
-import Control.Monad.Logger
 import Control.Monad.Trans.Resource (with)
 import Control.Monad.Reader (runReaderT)
 import qualified Data.Conduit.List as CL
@@ -18,18 +16,17 @@ import Data.Conduit
 
 instance PersistUniqueImpl SqlBackend where
     deleteByImpl uniq conn = do
-        let sql' = sql conn
-            vals = persistUniqueToValues uniq
-        runReaderT (rawExecute sql' vals) conn
+        let vals = persistUniqueToValues uniq
+        runReaderT (rawExecute sql vals) conn
       where
         t = entityDef $ dummyFromUnique uniq
         go = map snd . persistUniqueToFieldNames
-        go' conn x = connEscapeName conn x <> "=?"
-        sql conn = T.concat
+        go' x = connEscapeName conn x <> "=?"
+        sql = T.concat
             [ "DELETE FROM "
             , connEscapeName conn $ entityDB t
             , " WHERE "
-            , T.intercalate " AND " $ map (go' conn) $ go uniq
+            , T.intercalate " AND " $ map go' $ go uniq
             ]
 
     getByImpl uniq conn = do
@@ -43,7 +40,7 @@ instance PersistUniqueImpl SqlBackend where
                 , " FROM "
                 , connEscapeName conn $ entityDB t
                 , " WHERE "
-                , sqlClause conn
+                , sqlClause
                 ]
             vals' = persistUniqueToValues uniq
         with (rawQueryResource sql vals' conn) $ \src -> src $$ do -- FIXME broken for composite keys
@@ -59,9 +56,9 @@ instance PersistUniqueImpl SqlBackend where
                                 Nothing -> error "getByImpl: keyFromValues failed"
                 Just xs -> error $ "Database.Persist.GenericSql: Bad list in getBy xs="++show xs
       where
-        sqlClause conn =
-            T.intercalate " AND " $ map (go conn) $ toFieldNames' uniq
-        go conn x = connEscapeName conn x <> "=?"
+        sqlClause =
+            T.intercalate " AND " $ map go $ toFieldNames' uniq
+        go x = connEscapeName conn x <> "=?"
         t = entityDef $ dummyFromUnique uniq
         toFieldNames' = map snd . persistUniqueToFieldNames
 

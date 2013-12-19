@@ -9,6 +9,7 @@ import Data.Aeson (Value (Object))
 import Data.Aeson.Types (Parser)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Trans.Control (MonadBaseControl)
+import Control.Monad.Trans.Reader (ReaderT)
 import Control.Applicative ((<$>))
 import qualified Data.HashMap.Strict as HashMap
 
@@ -16,8 +17,9 @@ import qualified Data.HashMap.Strict as HashMap
 -- backend. This abstraction makes it easier to write code that can easily swap
 -- backends.
 class PersistConfig c where
-    type PersistConfigBackend c :: (* -> *) -> * -> *
+    type PersistConfigBackend c
     type PersistConfigPool c
+    type PersistConfigCreateArg c
 
     -- | Load the config settings from a 'Value', most likely taken from a YAML
     -- config file.
@@ -28,12 +30,12 @@ class PersistConfig c where
     applyEnv = return
 
     -- | Create a new connection pool based on the given config settings.
-    createPoolConfig :: c -> IO (PersistConfigPool c)
+    createPoolConfig :: PersistConfigCreateArg c -> c -> IO (PersistConfigPool c)
 
     -- | Run a database action by taking a connection from the pool.
     runPool :: (MonadBaseControl IO m, MonadIO m)
             => c
-            -> PersistConfigBackend c m a
+            -> ReaderT (PersistConfigBackend c) m a
             -> PersistConfigPool c
             -> m a
 
@@ -45,6 +47,10 @@ instance
   ) => PersistConfig (Either c1 c2) where
     type PersistConfigBackend (Either c1 c2) = PersistConfigBackend c1
     type PersistConfigPool (Either c1 c2) = PersistConfigPool c1
+    type PersistConfigCreateArg (Either c1 c2) =
+        ( PersistConfigCreateArg c1
+        , PersistConfigCreateArg c2
+        )
 
     loadConfig (Object o) =
         case HashMap.lookup "left" o of
@@ -55,7 +61,7 @@ instance
                     Nothing -> fail "PersistConfig for Either: need either a left or right"
     loadConfig _ = fail "PersistConfig for Either: need an object"
 
-    createPoolConfig = either createPoolConfig createPoolConfig
+    createPoolConfig (arg1, arg2) = either (createPoolConfig arg1) (createPoolConfig arg2)
 
     runPool (Left c) = runPool c
     runPool (Right c) = runPool c

@@ -28,7 +28,7 @@ instance HasPersistBackend SqlBackend SqlBackend where
     persistBackend = id
 
 instance PersistStoreImpl SqlBackend where
-    newtype BackendKey SqlBackend = SqlBackendKey { unSqlBackendKey :: Int64 }
+    newtype BackendKey SqlBackend = SqlBackendKey Int64
         deriving (Show, Read, Eq, Ord, Num, Integral, PersistField, PersistFieldSql, PathPiece, Real, Enum, Bounded)
 
     backendKeyToValues (SqlBackendKey i) = [PersistInt64 i]
