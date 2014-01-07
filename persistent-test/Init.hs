@@ -112,7 +112,7 @@ persistSettings = mkPersistSettings $ ConT ''MongoBackend
 type BackendMonad = MongoBackend
 runConn :: (MonadIO m, MonadBaseControl IO m) => Action m backend -> m ()
 runConn f = do
-  _<- withMongoPool defaultMongoConf { mgRsPrimary = Just "docmunch" } $ runMongoDBPool MongoDB.master f
+  _<- withMongoPool defaultMongoConf $ runMongoDBPool MongoDB.master f
   return ()
 
 --setup :: MongoPersist IO ()
