@@ -45,6 +45,7 @@ module Database.Persist.MongoDB
     , genObjectid
 
     -- * using connections
+    , withMongoPool
     , withMongoDBConn
     , withMongoDBPool
     , createMongoDBPool
@@ -52,6 +53,7 @@ module Database.Persist.MongoDB
     , runMongoDBPoolDef
     , ConnectionPool
     , Connection
+    , defaultMongoConf
     , MongoConf (..)
     , MongoBackend
     , MongoAuth (..)
@@ -267,6 +269,9 @@ createMongoDBPipePool hostname port connectionPoolSize stripeSize connectionIdle
                           connectionPoolSize
                           connectionIdleTime
                           stripeSize
+
+withMongoPool :: (Trans.MonadIO m, Applicative m) => MongoConf -> (ConnectionPool -> m b) -> m b
+withMongoPool conf connectionReader = createMongoPool conf >>= connectionReader
 
 withMongoDBPool :: (Trans.MonadIO m, Applicative m) =>
   Database -> HostName -> PortID -> Maybe MongoAuth -> Int -> Int -> NominalDiffTime -> (ConnectionPool -> m b) -> m b
@@ -812,6 +817,19 @@ data MongoConf = MongoConf
     , mgRsPrimary :: Maybe DB.ReplicaSetName -- ^ useful to query just a replica set primary
     } deriving Show
 
+defaultMongoConf :: MongoConf
+defaultMongoConf = MongoConf
+            { mgDatabase = "test"
+            , mgHost = "127.0.0.1"
+            , mgPort = DB.defaultPort
+            , mgAuth = Nothing
+            , mgAccessMode = DB.ConfirmWrites ["j" DB.=: True]
+            , mgPoolStripes = 1
+            , mgStripeConnections = 5
+            , mgConnectionIdleTime = 20
+            , mgRsPrimary = Nothing
+            }
+
 instance PersistConfig MongoConf where
     type PersistConfigBackend MongoConf = DB.Action
     type PersistConfigPool MongoConf = ConnectionPool
@@ -820,12 +838,13 @@ instance PersistConfig MongoConf where
 
     runPool c = runMongoDBPool (mgAccessMode c)
     loadConfig (Object o) = do
+        let def = defaultMongoConf
         db                 <- o .:  "database"
-        host               <- o .:? "host" .!= "127.0.0.1"
+        host               <- o .:? "host" .!= (mgHost def)
         (NoOrphanPortID port) <- o .:? "port" .!= NoOrphanPortID DB.defaultPort
-        poolStripes        <- o .:? "poolstripes" .!= 1
+        poolStripes        <- o .:? "poolstripes" .!= (mgPoolStripes def)
         stripeConnections  <- o .:  "connections"
-        (NoOrphanNominalDiffTime connectionIdleTime) <- o .:? "connectionIdleTime" .!= 20
+        (NoOrphanNominalDiffTime connectionIdleTime) <- o .:? "connectionIdleTime" .!= (NoOrphanNominalDiffTime $ mgConnectionIdleTime def)
         mUser              <- o .:? "user"
         mPass              <- o .:? "password"
         accessString       <- o .:? "accessMode" .!= "ConfirmWrites"

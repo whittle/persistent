@@ -1,7 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -50,13 +49,11 @@ import Data.Text (Text)
 
 #ifdef WITH_MONGODB
 import qualified Database.MongoDB as MongoDB
-import Database.Persist.MongoDB (Action, withMongoDBConn, runMongoDBPool, MongoBackend)
+import Database.Persist.MongoDB (Action, withMongoPool, runMongoDBPool, MongoBackend, defaultMongoConf, MongoConf(..))
 import Language.Haskell.TH.Syntax (Type(..))
 import Database.Persist.TH (mkPersistSettings, MkPersistSettings(..))
 import Control.Monad (replicateM)
 import qualified Data.ByteString as BS
-
-import Network (PortID (PortNumber))
 
 #else
 import Database.Persist.Sqlite
@@ -115,8 +112,7 @@ persistSettings = mkPersistSettings $ ConT ''MongoBackend
 type BackendMonad = MongoBackend
 runConn :: (MonadIO m, MonadBaseControl IO m) => Action m backend -> m ()
 runConn f = do
-  _<-withMongoDBConn "test" "127.0.0.1" (PortNumber 27017) Nothing 5 $
-      runMongoDBPool MongoDB.master f
+  _<- withMongoPool defaultMongoConf { mgRsPrimary = Just "docmunch" } $ runMongoDBPool MongoDB.master f
   return ()
 
 --setup :: MongoPersist IO ()
