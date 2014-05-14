@@ -20,6 +20,7 @@ module Init (
   , mkPersistSettings
   , persistSettings
   , Action
+  , ActionIO
 #else
   , db
   , sqlite_database
@@ -47,6 +48,7 @@ import Test.QuickCheck
 
 import Database.Persist
 import Data.Text (Text)
+import Control.Monad.Logger
 
 #ifdef WITH_MONGODB
 import qualified Database.MongoDB as MongoDB
@@ -61,7 +63,6 @@ import Network (PortID (PortNumber))
 #else
 import Database.Persist.Sqlite
 import Control.Monad.Trans.Resource (ResourceT, runResourceT)
-import Control.Monad.Logger
 
 #if WITH_POSTGRESQL
 import Database.Persist.Postgresql
@@ -113,8 +114,8 @@ persistSettings :: MkPersistSettings
 persistSettings = mkPersistSettings $ ConT ''MongoBackend
 
 type BackendMonad = MongoBackend
-runConn :: (MonadIO m, MonadBaseControl IO m) => Action m backend -> m ()
-runConn f = do
+runConn :: (MonadIO m, MonadBaseControl IO m) => Action (LoggingT m) backend -> m ()
+runConn f = runStdoutLoggingT $ do
   _<-withMongoDBConn "test" "127.0.0.1" (PortNumber 27017) Nothing 5 $
       runMongoDBPool MongoDB.master f
   return ()
@@ -137,7 +138,8 @@ setupMongo = do
       _ -> error "unkown version"
 
 
-db' :: Action IO () -> Action IO () -> Assertion
+type ActionIO = Action (LoggingT IO)
+db' :: ActionIO () -> ActionIO () -> Assertion
 db' actions cleanDB = do
   r <- runConn (actions >> cleanDB)
   return r
@@ -167,8 +169,7 @@ runConn f = runNoLoggingT $ do
     return ()
 
 db :: SqlPersistT (NoLoggingT (ResourceT IO)) () -> Assertion
-db actions = do
-  runResourceT $ runConn $ actions >> transactionUndo
+db actions = runResourceT $ runConn $ actions >> transactionUndo
 
 #if !MIN_VERSION_random(1,0,1)
 instance Random Int32 where

@@ -18,6 +18,8 @@
 {-# LANGUAGE MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances, FlexibleContexts #-}
 {-# LANGUAGE RankNTypes, TypeFamilies #-}
 {-# LANGUAGE EmptyDataDecls #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ConstraintKinds #-}
 
 {-# LANGUAGE UndecidableInstances #-} -- FIXME
 {-# OPTIONS_GHC -fno-warn-orphans #-}
@@ -119,6 +121,7 @@ import Data.Monoid (mappend)
 import Data.Typeable
 import Control.Monad.Trans.Resource (MonadThrow (..))
 import Control.Monad.Trans.Control (MonadBaseControl)
+import Control.Monad.Logger (logDebugS, MonadLogger(..))
 
 #ifdef DEBUG
 import FileLocation (debug)
@@ -363,7 +366,7 @@ saveWithKey entToFields dbSave key record =
 
 data MongoBackend deriving Typeable
 
-instance (Applicative m, Functor m, Trans.MonadIO m, MonadBaseControl IO m) => PersistStore (DB.Action m) where
+instance (Applicative m, Functor m, Trans.MonadIO m, MonadLogger m, MonadBaseControl IO m) => PersistStore (DB.Action m) where
     type PersistMonadBackend (DB.Action m) = MongoBackend
 
     insert record = do
@@ -407,7 +410,7 @@ instance MonadThrow m => MonadThrow (DB.Action m) where
     monadThrow = lift . monadThrow
 #endif
 
-instance (Applicative m, Functor m, Trans.MonadIO m, MonadBaseControl IO m) => PersistUnique (DB.Action m) where
+instance (Applicative m, Functor m, Trans.MonadIO m, MonadLogger m, MonadBaseControl IO m) => PersistUnique (DB.Action m) where
     getBy uniq = do
         mdoc <- DB.findOne $
           DB.select (uniqSelector uniq) (unDBName $ entityDB t)
@@ -430,13 +433,20 @@ keyToMongoIdField :: (PersistEntity entity, PersistEntityBackend entity ~ MongoB
                   => Key entity -> DB.Field
 keyToMongoIdField k = _id DB.:= (DB.ObjId $ keyToOid k)
 
+type LoggerIO m = (Trans.MonadIO m, MonadLogger m)
 
-instance (Applicative m, Functor m, Trans.MonadIO m, MonadBaseControl IO m) => PersistQuery (DB.Action m) where
+loggedModify :: LoggerIO m => DB.Selection -> DB.Modifier -> DB.Action m ()
+loggedModify q@(DB.Select sel coll) up = do
+  db <- DB.thisDatabase
+  lift $ $logDebugS "SQL" $ "modify " `mappend` db `mappend` "." `mappend` coll `mappend` " " `mappend` T.pack (show sel) `mappend` " " `mappend` T.pack (show up)
+  DB.modify q up
+
+type PersistMongoM m = (Applicative m, Functor m, LoggerIO m, MonadBaseControl IO m)
+instance PersistMongoM m => PersistQuery (DB.Action m) where
     update _ [] = return ()
-    update key upds =
-        DB.modify 
-           (DB.Select [keyToMongoIdField key] (collectionName $ recordTypeFromKey key))
-           $ updateFields upds
+    update key upds = loggedModify 
+         (DB.Select [keyToMongoIdField key] (collectionName $ recordTypeFromKey key))
+         $ updateFields upds
 
     updateGet key upds = do
         result <- DB.findAndModify (DB.select [keyToMongoIdField key]
@@ -454,7 +464,7 @@ instance (Applicative m, Functor m, Trans.MonadIO m, MonadBaseControl IO m) => P
 
     updateWhere _ [] = return ()
     updateWhere filts upds =
-        DB.modify DB.Select {
+        loggedModify DB.Select {
           DB.coll = collectionName $ dummyFromFilts filts
         , DB.selector = filtersToSelector filts
         } $ updateFields upds

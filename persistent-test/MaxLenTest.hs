@@ -20,7 +20,7 @@ import Data.String (IsString)
 import Data.ByteString (ByteString)
 
 #ifdef WITH_MONGODB
-db :: Action IO () -> Assertion
+db :: ActionIO () -> Assertion
 db = db' (return ())
 mkPersist persistSettings [persistUpperCase|
 #else

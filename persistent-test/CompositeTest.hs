@@ -90,7 +90,7 @@ cleanDB = do
   deleteWhere ([] :: [Filter Citizen])
   deleteWhere ([] :: [Filter Address])
 
-db :: Action IO () -> Assertion
+db :: ActionIO () -> Assertion
 db = db' cleanDB
 #else
 

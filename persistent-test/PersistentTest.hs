@@ -162,7 +162,7 @@ cleanDB = do
   deleteWhere ([] :: [Filter Email])
 
 #ifdef WITH_MONGODB
-db :: Action IO () -> Assertion
+db :: ActionIO () -> Assertion
 db = db' cleanDB
 #endif
 

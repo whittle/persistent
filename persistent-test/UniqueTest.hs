@@ -43,7 +43,7 @@ cleanDB = do
   deleteWhere ([] :: [Filter TestNonNull])
   deleteWhere ([] :: [Filter TestNull])
 
-db :: Action IO () -> Assertion
+db :: ActionIO () -> Assertion
 db = db' cleanDB
 #endif
 

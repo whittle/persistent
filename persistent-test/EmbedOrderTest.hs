@@ -36,7 +36,7 @@ cleanDB = do
   deleteWhere ([] :: [Filter Foo])
   deleteWhere ([] :: [Filter Bar])
 
-db :: Action IO () -> Assertion
+db :: ActionIO () -> Assertion
 db = db' cleanDB
 #endif
 

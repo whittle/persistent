@@ -30,7 +30,7 @@ share [mkPersist sqlSettings,  mkMigrate "numberMigrate"] [persistLowerCase|
 cleanDB :: (PersistQuery m, PersistEntityBackend Number ~ PersistMonadBackend m) => m ()
 cleanDB = do
   deleteWhere ([] :: [Filter Number])
-db :: Action IO () -> Assertion
+db :: ActionIO () -> Assertion
 db = db' cleanDB
 #endif
 

@@ -130,7 +130,7 @@ cleanDB = do
   deleteWhere ([] :: [Filter ListEmbed])
   deleteWhere ([] :: [Filter ARecord])
 
-db :: Action IO () -> Assertion
+db :: ActionIO () -> Assertion
 db = db' cleanDB
 #endif
 
