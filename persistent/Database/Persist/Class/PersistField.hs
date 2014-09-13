@@ -67,10 +67,7 @@ instance PersistField String where
     fromPersistValue (PersistUTCTime d) = Right $ Prelude.show d
     fromPersistValue PersistNull = Left $ T.pack "Unexpected null"
     fromPersistValue (PersistBool b) = Right $ Prelude.show b
-    fromPersistValue (PersistList _) = Left $ T.pack "Cannot convert PersistList to String"
-    fromPersistValue (PersistMap _) = Left $ T.pack "Cannot convert PersistMap to String"
-    fromPersistValue (PersistDbSpecific _) = Left $ T.pack "Cannot convert PersistDbSpecific to String"
-    fromPersistValue (PersistObjectId _) = Left $ T.pack "Cannot convert PersistObjectId to String"
+    fromPersistValue pv = Left $ T.pack "Cannot convert to String: " `T.append` T.pack (show pv)
 #endif
 
 instance PersistField ByteString where
