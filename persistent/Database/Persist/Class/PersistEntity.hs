@@ -43,6 +43,9 @@ class ( PersistField (Key record), ToJSON (Key record), FromJSON (Key record)
     -- | Persistent allows multiple different backends (databases)
     type PersistEntityBackend record
 
+    -- backendKeyMay     :: Key record -> Maybe (BackendKey PersistEntityBackend record)
+    -- fromBackendKeyMay :: BackendKey PersistEntityBackend record -> Maybe (Key record)
+
     -- | By default, a backend will automatically generate the key
     -- Instead you can specify a Primary key made up of unique values.
     data Key record

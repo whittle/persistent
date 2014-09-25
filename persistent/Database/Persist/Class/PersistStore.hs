@@ -3,6 +3,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE UndecidableInstances #-}
 module Database.Persist.Class.PersistStore
     ( HasPersistBackend (..)
     , liftPersist
@@ -10,6 +11,7 @@ module Database.Persist.Class.PersistStore
     , getJust
     , belongsTo
     , belongsToJust
+    , ToBackendKey(..)
     ) where
 
 import qualified Prelude
@@ -31,6 +33,7 @@ import Database.Persist.Class.PersistEntity
 import Database.Persist.Class.PersistField
 import Database.Persist.Types
 import qualified Data.Aeson as A
+import Web.PathPieces (PathPiece(..))
 
 class HasPersistBackend env backend | env -> backend where
     persistBackend :: env -> backend
@@ -41,6 +44,50 @@ liftPersist :: (MonadReader env m, HasPersistBackend env backend, MonadIO m)
 liftPersist f = do
     env <- ask
     liftIO $ runReaderT f (persistBackend env)
+
+-- | By default, a 'PersistEntity' uses the default 'BackendKey'
+-- and is an instance of ToBackendKey
+class ( PersistEntity record
+      , PersistEntityBackend record ~ backend
+      , PersistStore backend
+      ) => ToBackendKey backend record where
+    toBackendKey   :: Key record -> BackendKey backend
+    fromBackendKey :: BackendKey backend -> Key record
+
+instance ( A.ToJSON (BackendKey backend)
+         , ToBackendKey backend record
+         ) => A.ToJSON (Key record) where
+    toJSON = A.toJSON . toBackendKey
+instance ( A.FromJSON (BackendKey backend)
+         , ToBackendKey backend record
+         ) => A.FromJSON (Key record) where
+    parseJSON = fmap fromBackendKey . A.parseJSON
+
+instance ( PersistField (BackendKey backend)
+         , ToBackendKey backend record
+         ) => PersistField (Key record) where
+    toPersistValue = toPersistValue . toBackendKey
+    fromPersistValue = fmap fromBackendKey . fromPersistValue
+
+-- instance PersistFieldSql (BackendKey backend) => PersistFieldSql (Key record) where
+--  sqlType = sqlType . fmap toBackendKey
+
+instance ( PathPiece (BackendKey backend)
+         , ToBackendKey backend record
+         ) => PathPiece (Key record) where
+    toPathPiece = toPathPiece . toBackendKey
+    fromPathPiece = fmap fromBackendKey . fromPathPiece
+
+instance ( Eq (BackendKey backend)
+         , ToBackendKey backend record
+         ) => Eq (Key record) where
+    x == y = toBackendKey x == toBackendKey y
+    x /= y = toBackendKey x /= toBackendKey y
+
+instance ( Ord (BackendKey backend)
+         , ToBackendKey backend record
+         ) => Ord (Key record) where
+    compare x y = compare (toBackendKey x) (toBackendKey y)
 
 class
   ( Show (BackendKey backend), Read (BackendKey backend)

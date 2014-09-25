@@ -1,7 +1,9 @@
 module Database.Persist.Class
     (
+      ToBackendKey (..)
+
     -- * PersistStore
-      PersistStore (..)
+    , PersistStore (..)
     , getJust
     , belongsTo
     , belongsToJust
