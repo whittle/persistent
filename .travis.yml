@@ -1,5 +1,9 @@
 language: haskell
 
+ghc:
+    - 7.6
+    - 7.8
+
 install:
     - sudo add-apt-repository -y ppa:yandex-sysmon/zookeeper-3.4
     - sudo apt-get update
