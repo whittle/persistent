@@ -416,7 +416,7 @@ takeConstraint ps tableName defs (n:rest) | not (T.null n) && isUpper (T.head n)
             | n == "Unique"  = (Nothing, Nothing, Just $ takeUniq ps tableName defs rest, Nothing)
             | n == "Foreign" = (Nothing, Nothing, Nothing, Just $ takeForeign ps tableName defs rest)
             | n == "Primary" = (Nothing, Just $ takeComposite defs rest, Nothing, Nothing)
-            | n == "Id"      = (Just $ takeId ps tableName (n:rest), Nothing, Nothing, Nothing)
+            | n == "Id" || n == "id" = (Just $ takeId ps tableName (n:rest), Nothing, Nothing, Nothing)
             | otherwise      = (Nothing, Nothing, Just $ takeUniq ps "" defs (n:rest), Nothing) -- retain compatibility with original unique constraint
 takeConstraint _ _ _ _ = (Nothing, Nothing, Nothing, Nothing)
 
