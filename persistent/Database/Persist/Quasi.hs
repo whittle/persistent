@@ -262,11 +262,20 @@ fixForeignKeysAll unEnts = map fixForeignKeys unEnts
             (pfh, pfdb) = (fieldHaskell pfd, fieldDB pfd)
 
             chktypes :: FieldDef -> HaskellName -> [FieldDef] -> HaskellName -> Maybe String
-            chktypes ffld _fkey pflds pkey =
-                if fieldType ffld == fieldType pfld then Nothing
-                  else Just $ "fieldType mismatch: " ++ show (fieldType ffld) ++ ", " ++ show (fieldType pfld)
+            chktypes ffld _fkey pflds pkey = case (sameFieldType, sameSqlType) of
+                (True, True) -> Nothing
+                (False, _)   -> Just $
+                  "fieldType mismatch: " ++ show (fieldType ffld) ++ ", " ++ show (fieldType pfld)
+                (_, False)   -> Just $
+                  "fieldSqlType mismatch: " ++ show stf ++ ", " ++ show stp
               where
                 pfld = getFd pflds pkey
+                sameFieldType = fieldType ffld == fieldType pfld 
+                sameSqlType = stf == stp || case (stf, stp) of
+                    (SqlOther {}, SqlOther {}) -> True
+                    _ -> False
+                stf = fieldSqlType ffld 
+                stp = fieldSqlType pfld 
 
             entName = entityHaskell ent
             getFd [] t = error $ "foreign key constraint for: " ++ show (unHaskellName entName)
