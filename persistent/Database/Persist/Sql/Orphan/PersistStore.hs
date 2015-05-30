@@ -201,7 +201,8 @@ instance PersistStore SqlBackend where
                         , T.intercalate "," $ map (connEscapeName conn . fieldDB) $ entityFields t
                         , ") VALUES ("
                         , T.intercalate "),(" $ replicate (length valss) $ T.intercalate "," $ map (const "?") (entityFields t)
-                        , ") RETURNING id"
+                        , ") RETURNING "
+                        , connEscapeName conn $ fieldDB $ entityId t
                         ]
                 ids <- rawSql sql (concat valss)
                 return $ map unSingle ids
