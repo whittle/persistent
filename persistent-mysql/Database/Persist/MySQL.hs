@@ -103,6 +103,7 @@ open' ci logFunc = do
         { connPrepare    = prepare' conn
         , connStmtMap    = smap
         , connInsertSql  = insertSql'
+        , connInsertManySql = Nothing
         , connClose      = MySQL.close conn
         , connMigrateSql = migrate' ci
         , connBegin      = const $ MySQL.execute_ conn "start transaction" >> return ()
@@ -820,6 +821,7 @@ instance FromJSON MySQLConf where
         user     <- o .: "user"
         password <- o .: "password"
         pool     <- o .: "poolsize"
+        -- Add init option here specifying strict mode?
         let ci = MySQL.defaultConnectInfo
                    { MySQL.connectHost     = host
                    , MySQL.connectPort     = port
