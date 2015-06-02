@@ -198,7 +198,7 @@ instance PersistStore SqlBackend where
                     ISRSingle sql -> do
                         ids <- rawSql sql (concat valss)
                         return $ map unSingle ids
-                    _ -> error "Should be ISRSingle"
+                    _ -> error "ISRSingle is expected from the connInsertManySql function"
                 where
                     ent = entityDef vals
                     valss = map (map toPersistValue . toPersistFields) vals

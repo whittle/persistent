@@ -189,6 +189,7 @@ insertSql' ent vals =
        Just _pdef -> ISRManyKeys sql vals
        Nothing -> ISRSingle (sql <> " RETURNING " <> escape (fieldDB (entityId ent)))
 
+-- | SQL for inserting multiple rows at once and returning their primary keys.
 insertManySql' :: EntityDef -> [[PersistValue]] -> InsertSqlResult
 insertManySql' ent valss =
   let sql = T.concat
