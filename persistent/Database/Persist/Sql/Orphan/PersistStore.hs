@@ -202,27 +202,6 @@ instance PersistStore SqlBackend where
                 where
                     ent = entityDef vals
                     valss = map (map toPersistValue . toPersistFields) vals
-                    
-
-
-        -- if connRDBMS conn /= "postgresql"
-        --     then mapM insert vals
-        --     else do
-                -- let sql = T.concat
-                --         [ "INSERT INTO "
-                --         , connEscapeName conn (entityDB t)
-                --         , "("
-                --         , T.intercalate "," $ map (connEscapeName conn . fieldDB) $ entityFields t
-                --         , ") VALUES ("
-                --         , T.intercalate "),(" $ replicate (length valss) $ T.intercalate "," $ map (const "?") (entityFields t)
-                --         , ") RETURNING "
-                --         , connEscapeName conn $ fieldDB $ entityId t
-                --         ]
-                -- ids <- rawSql sql (concat valss)
-                -- return $ map unSingle ids
-        -- where
-            
-
 
 
     insertMany_ [] = return ()

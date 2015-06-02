@@ -203,11 +203,6 @@ insertManySql' ent valss =
                 ]
   in ISRSingle sql
 
-
-  -- in case entityPrimary ent of
-  --      Just _pdef -> ISRManyKeys sql vals
-  --      Nothing -> ISRSingle (sql <> " RETURNING " <> escape (fieldDB (entityId ent)))
-
 execute' :: PG.Connection -> PG.Query -> [PersistValue] -> IO Int64
 execute' conn query vals = PG.execute conn query (map P vals)
 

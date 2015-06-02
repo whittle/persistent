@@ -821,7 +821,6 @@ instance FromJSON MySQLConf where
         user     <- o .: "user"
         password <- o .: "password"
         pool     <- o .: "poolsize"
-        -- Add init option here specifying strict mode?
         let ci = MySQL.defaultConnectInfo
                    { MySQL.connectHost     = host
                    , MySQL.connectPort     = port
