@@ -370,6 +370,8 @@ builtinGetters = I.fromList
     , (1561,             listOf PersistInt64)
     , (1563,             listOf PersistInt64)
     , (1231,             listOf PersistRational)
+    , (16589,            listOf PersistMap)
+
     -- no array(void) type
     , (2951,             listOf (PersistDbSpecific . unUnknown))
     , (199,              listOf (PersistByteString . unUnknown))
@@ -1038,6 +1040,6 @@ mockMigration mig = do
                              connRDBMS = undefined,
                              connLimitOffset = undefined,
                              connLogFunc = undefined}
-      result = runReaderT $ runWriterT $ runWriterT mig 
+      result = runReaderT $ runWriterT $ runWriterT mig
   resp <- result sqlbackend
   mapM_ T.putStrLn $ map snd $ snd resp
