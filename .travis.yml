@@ -188,6 +188,10 @@ before_install:
 
 script: travis/run.sh
 
+addons:
+  packages:
+  - libzookeeper-mt-dev
+
 cache:
   directories:
   - $HOME/.cabal
