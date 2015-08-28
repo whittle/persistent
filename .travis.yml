@@ -11,9 +11,14 @@ matrix:
         packages:
         - ghc-7.6.3
         - cabal-install-1.18
-  # Disabled, see:
-  # https://github.com/yesodweb/persistent/issues/460
-  #- GHCVER=7.6.3 CABALVER=1.18 BACKEND=sqlite
+  - env: GHCVER=7.6.3 CABALVER=1.18 BACKEND=sqlite
+    addons:
+      apt:
+        sources:
+        - hvr-ghc
+        packages:
+        - ghc-7.6.3
+        - cabal-install-1.18
   - env: GHCVER=7.6.3 CABALVER=1.18 BACKEND=zookeeper
     addons:
       apt:
@@ -30,8 +35,11 @@ matrix:
         packages:
         - ghc-7.6.3
         - cabal-install-1.18
+    services:
+    - mongodb
   - env: GHCVER=7.6.3 CABALVER=1.18 BACKEND=postgresql
     addons:
+      postgresql: "9.3"
       apt:
         sources:
         - hvr-ghc
@@ -46,6 +54,8 @@ matrix:
         packages:
         - ghc-7.6.3
         - cabal-install-1.18
+    services:
+    - mysql
 
   - env: GHCVER=7.8.4 CABALVER=1.18 BACKEND=none
     addons:
@@ -79,8 +89,11 @@ matrix:
         packages:
         - ghc-7.8.4
         - cabal-install-1.18
+    services:
+    - mongodb
   - env: GHCVER=7.8.4 CABALVER=1.18 BACKEND=postgresql
     addons:
+      postgresql: "9.3"
       apt:
         sources:
         - hvr-ghc
@@ -95,6 +108,8 @@ matrix:
         packages:
         - ghc-7.8.4
         - cabal-install-1.18
+    services:
+    - mysql
 
   - env: GHCVER=7.10.2 CABALVER=1.22 BACKEND=none
     addons:
@@ -128,8 +143,11 @@ matrix:
         packages:
         - ghc-7.10.2
         - cabal-install-1.22
+    services:
+    - mongodb
   - env: GHCVER=7.10.2 CABALVER=1.22 BACKEND=postgresql
     addons:
+      postgresql: "9.3"
       apt:
         sources:
         - hvr-ghc
@@ -144,6 +162,8 @@ matrix:
         packages:
         - ghc-7.10.2
         - cabal-install-1.22
+    services:
+    - mysql
 
   - env: GHCVER=head CABALVER=head BACKEND=none
     addons:
@@ -156,16 +176,12 @@ matrix:
 
   allow_failures:
   - env: GHCVER=head CABALVER=head BACKEND=none
+
+  # See: https://github.com/yesodweb/persistent/issues/460
+  - env: GHCVER=7.6.3 CABALVER=1.18 BACKEND=sqlite
   - env: GHCVER=7.6.3 CABALVER=1.18 BACKEND=zookeeper
   - env: GHCVER=7.8.4 CABALVER=1.18 BACKEND=zookeeper
   - env: GHCVER=7.10.2 CABALVER=1.22 BACKEND=zookeeper
-
-addons:
-  postgresql: "9.3"
-
-services:
-- mysql
-- mongodb
 
 before_install:
 - travis_retry /opt/cabal/$CABALVER/bin/cabal update
