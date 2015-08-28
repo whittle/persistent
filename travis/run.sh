@@ -38,5 +38,11 @@ else
     fi
 
     cd persistent-test
-    cabal install --force-reinstalls $TEST -f$BACKEND
+    cabal install --force-reinstalls --only-dependencies --enable-tests -f$BACKEND
+
+    # Make sure we get regular output sent to Travis to avoid it canceling our
+    # builds
+    cabal configure --enable-tests -f$BACKEND
+    cabal build
+    cabal test
 fi
