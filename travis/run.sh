@@ -25,16 +25,15 @@ else
         mysql -e 'create database persistent;'
     elif [ "$BACKEND" = "zookeeper" ]
     then
-        sudo add-apt-repository -y ppa:yandex-sysmon/zookeeper-3.4
-        sudo apt-get update
-        sudo apt-get install -y libzookeeper-mt-dev zookeeperd
-
-        sudo mkdir -p /var/log/zookeeper
-        sudo chmod -R 777 /var/log/zookeeper
-        sudo chmod 666 /etc/zookeeper/conf/zoo.cfg
-        echo maxClientCnxns=128 >> /etc/zookeeper/conf/zoo.cfg
-        sudo service zookeeper restart
-        sleep 10
+        #sudo add-apt-repository -y ppa:yandex-sysmon/zookeeper-3.4
+        #sudo apt-get update
+        #sudo apt-get install -y libzookeeper-mt-dev zookeeperd
+        #sudo mkdir -p /var/log/zookeeper
+        #sudo chmod -R 777 /var/log/zookeeper
+        #sudo chmod 666 /etc/zookeeper/conf/zoo.cfg
+        #echo maxClientCnxns=128 >> /etc/zookeeper/conf/zoo.cfg
+        #sudo service zookeeper restart
+        #sleep 10
         /usr/share/zookeeper/bin/zkCli.sh create /persistent null
     fi
 

@@ -27,6 +27,7 @@ matrix:
         packages:
         - ghc-7.6.3
         - cabal-install-1.18
+        - zookeeperd
   - env: GHCVER=7.6.3 CABALVER=1.18 BACKEND=mongodb
     addons:
       apt:
@@ -81,6 +82,7 @@ matrix:
         packages:
         - ghc-7.8.4
         - cabal-install-1.18
+        - zookeeperd
   - env: GHCVER=7.8.4 CABALVER=1.18 BACKEND=mongodb
     addons:
       apt:
@@ -135,6 +137,7 @@ matrix:
         packages:
         - ghc-7.10.2
         - cabal-install-1.22
+        - zookeeperd
   - env: GHCVER=7.10.2 CABALVER=1.22 BACKEND=mongodb
     addons:
       apt:
