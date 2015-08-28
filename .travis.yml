@@ -11,6 +11,7 @@ matrix:
         packages:
         - ghc-7.6.3
         - cabal-install-1.18
+        - libzookeeper-mt-dev
   - env: GHCVER=7.6.3 CABALVER=1.18 BACKEND=sqlite
     addons:
       apt:
@@ -27,6 +28,7 @@ matrix:
         packages:
         - ghc-7.6.3
         - cabal-install-1.18
+        - libzookeeper-mt-dev
         - zookeeperd
   - env: GHCVER=7.6.3 CABALVER=1.18 BACKEND=mongodb
     addons:
@@ -66,6 +68,7 @@ matrix:
         packages:
         - ghc-7.8.4
         - cabal-install-1.18
+        - libzookeeper-mt-dev
   - env: GHCVER=7.8.4 CABALVER=1.18 BACKEND=sqlite
     addons:
       apt:
@@ -82,6 +85,7 @@ matrix:
         packages:
         - ghc-7.8.4
         - cabal-install-1.18
+        - libzookeeper-mt-dev
         - zookeeperd
   - env: GHCVER=7.8.4 CABALVER=1.18 BACKEND=mongodb
     addons:
@@ -121,6 +125,7 @@ matrix:
         packages:
         - ghc-7.10.2
         - cabal-install-1.22
+        - libzookeeper-mt-dev
   - env: GHCVER=7.10.2 CABALVER=1.22 BACKEND=sqlite
     addons:
       apt:
@@ -137,6 +142,7 @@ matrix:
         packages:
         - ghc-7.10.2
         - cabal-install-1.22
+        - libzookeeper-mt-dev
         - zookeeperd
   - env: GHCVER=7.10.2 CABALVER=1.22 BACKEND=mongodb
     addons:
@@ -176,6 +182,7 @@ matrix:
         packages:
         - ghc-head
         - cabal-install-head
+        - libzookeeper-mt-dev
 
   allow_failures:
   - env: GHCVER=head CABALVER=head BACKEND=none
@@ -190,10 +197,6 @@ before_install:
 - travis_retry /opt/cabal/$CABALVER/bin/cabal update
 
 script: travis/run.sh
-
-addons:
-  packages:
-  - libzookeeper-mt-dev
 
 cache:
   directories:
