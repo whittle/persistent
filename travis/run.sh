@@ -42,7 +42,7 @@ else
 
     # Make sure we get regular output sent to Travis to avoid it canceling our
     # builds
-    cabal configure --enable-tests -f$BACKEND
+    cabal configure --enable-tests -f$BACKEND --ghc-options="-O0"
     cabal build
     cabal test
 fi
