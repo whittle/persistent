@@ -98,11 +98,11 @@ class (PersistUniqueRead backend, PersistStoreWrite backend) => PersistUniqueWri
     upsertBy uniqueKey record updates = do
         mExists <- getBy uniqueKey
         k <- case mExists of
-            Just (Entity k _) -> do
+            Just (Entity k _ _) -> do
               when (null updates) (replace k record)
               return k
             Nothing           -> insert record
-        Entity k `liftM` updateGet k updates
+        updateGet k updates
 
 
 -- | Insert a value, checking for conflicts with any unique constraints.  If a
@@ -125,7 +125,7 @@ _insertOrGet val = do
     res <- getByValue val
     case res of
         Nothing -> insert val
-        Just (Entity key _) -> return key
+        Just (Entity key _ _) -> return key
 
 -- | Return the single unique key for a record.
 onlyUnique :: (MonadIO m, PersistUniqueWrite backend, PersistRecordBackend record backend)
@@ -184,7 +184,7 @@ replaceUnique key datumNew = getJust key >>= replaceOriginal
           (Just conflictingKey) -> return $ Just conflictingKey
       where
         changedKeys = uniqueKeysNew \\ uniqueKeysOriginal
-        uniqueKeysOriginal = persistUniqueKeys original
+        uniqueKeysOriginal = persistUniqueKeys $ entityVal original
 
 -- | Check whether there are any conflicts for unique keys with this entity and
 -- existing entities in the database.

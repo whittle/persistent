@@ -14,9 +14,10 @@ module Database.Persist.Class.PersistEntity
     , BackendSpecificFilter
     , Entity (..)
 
-    , entityValues
+    , entityValues, keyValueAutoEntityToJSON
     , keyValueEntityToJSON, keyValueEntityFromJSON
     , entityIdToJSON, entityIdFromJSON
+    , entityIdAutoToJSON, entityIdAutoFromJSON
       -- * PersistField based on other typeclasses
     , toPersistValueJSON, fromPersistValueJSON
     , toPersistValueEnum, fromPersistValueEnum
@@ -46,7 +47,8 @@ import Data.Maybe (isJust)
 
 -- | Persistent serialized Haskell records to the database.
 -- A Database 'Entity' (A row in SQL, a document in MongoDB, etc)
--- corresponds to a 'Key' plus a Haskell record.
+-- corresponds to a 'Key' plus two Haskell records: one managed in Haskell,
+-- one managed by the database.
 --
 -- For every Haskell record type stored in the database there is a
 -- corresponding 'PersistEntity' instance. An instance of PersistEntity
@@ -86,6 +88,9 @@ class ( PersistField (Key record), ToJSON (Key record), FromJSON (Key record)
     toPersistFields :: record -> [SomePersistField]
     -- | A lower-level operation to convert from database values to a Haskell record.
     fromPersistValues :: [PersistValue] -> Either Text record
+
+    data Auto record
+    fromAutoPersistValues :: [PersistValue] -> Either Text (Auto record)
 
     -- | Unique keys besides the 'Key'.
     data Unique record
@@ -172,19 +177,20 @@ data Filter record = forall typ. PersistField typ => Filter
 -- WHERE ...@, and so on.
 data Entity record = PersistEntity record =>
     Entity { entityKey :: Key record
-           , entityVal :: record }
+           , entityVal :: record
+           , entityAuto :: Maybe (Auto record) }
 
-deriving instance (PersistEntity record, Eq (Key record), Eq record) => Eq (Entity record)
-deriving instance (PersistEntity record, Ord (Key record), Ord record) => Ord (Entity record)
-deriving instance (PersistEntity record, Show (Key record), Show record) => Show (Entity record)
-deriving instance (PersistEntity record, Read (Key record), Read record) => Read (Entity record)
+deriving instance (PersistEntity record, Eq (Key record), Eq record, Eq (Auto record)) => Eq (Entity record)
+deriving instance (PersistEntity record, Ord (Key record), Ord record, Ord (Auto record)) => Ord (Entity record)
+deriving instance (PersistEntity record, Show (Key record), Show record, Show (Auto record)) => Show (Entity record)
+deriving instance (PersistEntity record, Read (Key record), Read record, Read (Auto record)) => Read (Entity record)
 #if MIN_VERSION_base(4,7,0)
 deriving instance Typeable Entity
 #endif
 
 -- | Get list of values corresponding to given entity.
 entityValues :: PersistEntity record => Entity record -> [PersistValue]
-entityValues (Entity k record) =
+entityValues (Entity k record _) =
   if isJust (entityPrimary ent)
     then
       -- TODO: check against the key
@@ -205,7 +211,7 @@ entityValues (Entity k record) =
 -- @
 keyValueEntityToJSON :: (PersistEntity record, ToJSON record, ToJSON (Key record))
                      => Entity record -> Value
-keyValueEntityToJSON (Entity key value) = object
+keyValueEntityToJSON (Entity key value _) = object
     [ "key" .= key
     , "value" .= value
     ]
@@ -224,7 +230,25 @@ keyValueEntityFromJSON :: (PersistEntity record, FromJSON record, FromJSON (Key 
 keyValueEntityFromJSON (Object o) = Entity
     A.<$> o .: "key"
     A.<*> o .: "value"
+    A.<*> pure Nothing
 keyValueEntityFromJSON _ = fail "keyValueEntityFromJSON: not an object"
+
+-- | Predefined @toJSON@. The resulting JSON looks like
+-- @{"key": 1, "value": {"name": ...}, "auto": {"createdAt": ...}}@.
+--
+-- The typical usage is:
+--
+-- @
+-- instance ToJSON (Entity User) where
+--     toJSON = keyValueAutoEntityToJSON
+-- @
+keyValueAutoEntityToJSON :: (PersistEntity record, ToJSON record, ToJSON (Key record), ToJSON (Auto record))
+                         => Entity record -> Value
+keyValueAutoEntityToJSON (Entity key value auto) = object
+    [ "key" .= key
+    , "value" .= value
+    , "auto" .= auto
+    ]
 
 -- | Predefined @toJSON@. The resulting JSON looks like
 -- @{"id": 1, "name": ...}@.
@@ -236,7 +260,7 @@ keyValueEntityFromJSON _ = fail "keyValueEntityFromJSON: not an object"
 --     toJSON = entityIdToJSON
 -- @
 entityIdToJSON :: (PersistEntity record, ToJSON record, ToJSON (Key record)) => Entity record -> Value
-entityIdToJSON (Entity key value) = case toJSON value of
+entityIdToJSON (Entity key value _) = case toJSON value of
     Object o -> Object $ HM.insert "id" (toJSON key) o
     x -> x
 
@@ -250,12 +274,45 @@ entityIdToJSON (Entity key value) = case toJSON value of
 --     parseJSON = entityIdFromJSON
 -- @
 entityIdFromJSON :: (PersistEntity record, FromJSON record, FromJSON (Key record)) => Value -> Parser (Entity record)
-entityIdFromJSON value@(Object o) = Entity <$> o .: "id" <*> parseJSON value
+entityIdFromJSON value@(Object o) = Entity <$> o .: "id" <*> parseJSON value <*> pure Nothing
 entityIdFromJSON _ = fail "entityIdFromJSON: not an object"
+
+-- | Predefined @toJSON@. The resulting JSON looks like
+-- @{"id": 1, "name": ..., "createdAt": ...}@.
+--
+-- The typical usage is:
+--
+-- @
+-- instance ToJSON (Entity User) where
+--     toJSON = entityIdAutoToJSON
+-- @
+entityIdAutoToJSON :: (PersistEntity record, ToJSON record, ToJSON (Key record), ToJSON (Auto record))
+                   => Entity record -> Value
+entityIdAutoToJSON (Entity key value auto) = case (toJSON value, toJSON auto) of
+    (Object o, Object a) -> Object $ HM.insert "id" (toJSON key) $ HM.union o a
+    (Object o, _) -> Object $ HM.insert "id" (toJSON key) o
+    (x, _) -> x
+
+-- | Predefined @parseJSON@. The input JSON looks like
+-- @{"id": 1, "name": ..., "createdAt": ...}@.
+--
+-- The typical usage is:
+--
+-- @
+-- intance FromJSON (Entity User) where
+--     parseJSON = entityIdAutoFromJSON
+-- @
+entityIdAutoFromJSON :: (PersistEntity record, FromJSON record, FromJSON (Key record), FromJSON (Auto record))
+                     => Value -> Parser (Entity record)
+entityIdAutoFromJSON value@(Object o) = Entity <$> o .: "id"
+                                               <*> parseJSON value
+                                               <*> parseJSON value
+entityIdAutoFromJSON _ = fail "entityIdAutoFromJSON: not an object"
+
 
 instance (PersistEntity record, PersistField record, PersistField (Key record))
   => PersistField (Entity record) where
-    toPersistValue (Entity key value) = case toPersistValue value of
+    toPersistValue (Entity key value _) = case toPersistValue value of
         (PersistMap alist) -> PersistMap ((idField, toPersistValue key) : alist)
         _ -> error $ T.unpack $ errMsg "expected PersistMap"
 
@@ -264,7 +321,7 @@ instance (PersistEntity record, PersistField record, PersistField (Key record))
         ("_id", kv):afterRest ->
             fromPersistValue (PersistMap (before ++ afterRest)) >>= \record ->
                 keyFromValues [kv] >>= \k ->
-                    Right (Entity k record)
+                    Right (Entity k record Nothing)
         _ -> Left $ errMsg $ "impossible id field: " `mappend` T.pack (show alist)
       where
         (before, after) = break ((== idField) . fst) alist

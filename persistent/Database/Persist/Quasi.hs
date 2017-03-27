@@ -74,7 +74,7 @@ parseFieldType t0 =
             PSSuccess x t' -> goMany (front . (x:)) t'
             PSFail err -> PSFail err
             PSDone -> PSSuccess (front []) t
-            -- _ -> 
+            -- _ ->
 
 data PersistSettings = PersistSettings
     { psToDBName :: !(Text -> Text)
@@ -305,6 +305,7 @@ mkEntityDef ps name entattribs lines =
         (setComposite primaryComposite $ fromMaybe autoIdField idField)
         entattribs
         cols
+        autos
         uniqs
         []
         derives
@@ -321,16 +322,19 @@ mkEntityDef ps name entattribs lines =
     attribPrefix = flip lookupKeyVal entattribs
     idName | Just _ <- attribPrefix "id" = error "id= is deprecated, ad a field named 'Id' and use sql="
            | otherwise = Nothing
-            
-    (idField, primaryComposite, uniqs, foreigns) = foldl' (\(mid, mp, us, fs) attr -> 
-        let (i, p, u, f) = takeConstraint ps name' cols attr 
+
+    (idField, primaryComposite, uniqs, foreigns) = foldl' (\(mid, mp, us, fs) attr ->
+        let (i, p, u, f) = takeConstraint ps name' cols attr
             squish xs m = xs `mappend` maybeToList m
         in (just1 mid i, just1 mp p, squish us u, squish fs f)) (Nothing, Nothing, [],[]) attribs
-                                    
+
     derives = concat $ mapMaybe takeDerives attribs
 
     cols :: [FieldDef]
     cols = mapMaybe (takeColsEx ps) attribs
+
+    autos :: [FieldDef]
+    autos = mapMaybe (takeAutosEx ps) attribs
 
     autoIdField = mkAutoIdField ps entName (DBName `fmap` idName) idSqlType
     idSqlType = maybe SqlInt64 (const $ SqlOther "Primary Key") primaryComposite
@@ -343,7 +347,7 @@ just1 :: (Show x) => Maybe x -> Maybe x -> Maybe x
 just1 (Just x) (Just y) = error $ "expected only one of: "
   `mappend` show x `mappend` " " `mappend` show y
 just1 x y = x `mplus` y
-                
+
 
 mkAutoIdField :: PersistSettings -> HaskellName -> Maybe DBName -> SqlType -> FieldDef
 mkAutoIdField ps entName idName idSqlType = FieldDef
@@ -381,10 +385,13 @@ splitExtras (Line _ ts:rest) =
 takeColsEx :: PersistSettings -> [Text] -> Maybe FieldDef
 takeColsEx = takeCols (\ft perr -> error $ "Invalid field type " ++ show ft ++ " " ++ perr)
 
+takeAutosEx :: PersistSettings -> [Text] -> Maybe FieldDef
+takeAutosEx = takeAutos (\ft perr -> error $ "Invalid field type " ++ show ft ++ " " ++ perr)
+
 takeCols :: (Text -> String -> Maybe FieldDef) -> PersistSettings -> [Text] -> Maybe FieldDef
 takeCols _ _ ("deriving":_) = Nothing
 takeCols onErr ps (n':typ:rest)
-    | not (T.null n) && isLower (T.head n) =
+    | not ("%" `T.isPrefixOf` n') && not (T.null n) && isLower (T.head n) =
         case parseFieldType typ of
             Left err -> onErr typ err
             Right ft -> Just FieldDef
@@ -403,6 +410,23 @@ takeCols onErr ps (n':typ:rest)
         | otherwise = (Nothing, n')
 takeCols _ _ _ = Nothing
 
+takeAutos :: (Text -> String -> Maybe FieldDef) -> PersistSettings -> [Text] -> Maybe FieldDef
+takeAutos _ _ ("deriving":_) = Nothing
+takeAutos onErr ps (n:typ:rest)
+    | not (T.null n) && ("%" `T.isPrefixOf` n) && isLower (T.head n) =
+        case parseFieldType typ of
+            Left err -> onErr typ err
+            Right ft -> Just FieldDef
+                { fieldHaskell = HaskellName n
+                , fieldDB = DBName $ getDbName ps n rest
+                , fieldType = ft
+                , fieldSqlType = SqlOther $ "SqlType unset for " `mappend` n
+                , fieldAttrs = rest
+                , fieldStrict = True
+                , fieldReference = NoReference
+                }
+takeAutos _ _ _ = Nothing
+
 getDbName :: PersistSettings -> Text -> [Text] -> Text
 getDbName ps n [] = psToDBName ps n
 getDbName ps n (a:as) = fromMaybe (getDbName ps n as) $ T.stripPrefix "sql=" a
@@ -412,9 +436,9 @@ takeConstraint :: PersistSettings
           -> [FieldDef]
           -> [Text]
           -> (Maybe FieldDef, Maybe CompositeDef, Maybe UniqueDef, Maybe UnboundForeignDef)
-takeConstraint ps tableName defs (n:rest) | not (T.null n) && isUpper (T.head n) = takeConstraint' 
+takeConstraint ps tableName defs (n:rest) | not (T.null n) && isUpper (T.head n) = takeConstraint'
     where
-      takeConstraint' 
+      takeConstraint'
             | n == "Unique"  = (Nothing, Nothing, Just $ takeUniq ps tableName defs rest, Nothing)
             | n == "Foreign" = (Nothing, Nothing, Nothing, Just $ takeForeign ps tableName defs rest)
             | n == "Primary" = (Nothing, Just $ takeComposite defs rest, Nothing, Nothing)
@@ -444,7 +468,7 @@ takeId ps tableName (n:rest) = fromMaybe (error "takeId: impossible!") $ setFiel
     setIdName = ["sql=" `mappend` psIdName ps]
 takeId _ tableName _ = error $ "empty Id field for " `mappend` show tableName
 
-    
+
 takeComposite :: [FieldDef]
               -> [Text]
               -> CompositeDef
@@ -462,7 +486,7 @@ takeComposite fields pkcols
                 else d
         | otherwise = getDef ds t
 
--- Unique UppercaseConstraintName list of lowercasefields    
+-- Unique UppercaseConstraintName list of lowercasefields
 takeUniq :: PersistSettings
           -> Text
           -> [FieldDef]

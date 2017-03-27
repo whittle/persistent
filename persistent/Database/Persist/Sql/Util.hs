@@ -17,9 +17,9 @@ import Data.Text (Text, pack)
 import Database.Persist (
     Entity(Entity), EntityDef, EntityField, HaskellName(HaskellName)
   , PersistEntity, PersistValue
-  , keyFromValues, fromPersistValues, fieldDB, entityId, entityPrimary
-  , entityFields, entityKeyFields, fieldHaskell, compositeFields, persistFieldDef
-  , keyAndEntityFields
+  , keyFromValues, fromPersistValues, fromAutoPersistValues, fieldDB, entityId
+  , entityPrimary, entityFields, entityKeyFields, fieldHaskell, compositeFields
+  , persistFieldDef, keyAndEntityFields
   , DBName)
 import Database.Persist.Sql.Types (Sql, SqlBackend, connEscapeName)
 
@@ -65,22 +65,23 @@ parseEntityValues t vals =
       Nothing -> fromPersistValues' vals
   where
     fromPersistValues' (kpv:xs) = -- oracle returns Double
-        case fromPersistValues xs of
-            Left e -> Left e
-            Right xs' ->
-                case keyFromValues [kpv] of
-                    Left _ -> error $ "fromPersistValues': keyFromValues failed on " ++ show kpv
-                    Right k -> Right (Entity k xs')
+        case (fromPersistValues xs, fromAutoPersistValues xs) of
+            (Left e, _) -> Left e
+            (_, Left e) -> Left e
+            (Right xs', Right xs'') -> case keyFromValues [kpv] of
+                Left _ -> error $ "fromPersistValues': keyFromValues failed on " ++ show kpv
+                Right k -> Right (Entity k xs' (Just xs''))
 
 
     fromPersistValues' xs = Left $ pack ("error in fromPersistValues' xs=" ++ show xs)
 
     fromPersistValuesComposite' keyvals xs =
-        case fromPersistValues xs of
-            Left e -> Left e
-            Right xs' -> case keyFromValues keyvals of
+        case (fromPersistValues xs, fromAutoPersistValues xs) of
+            (Left e, _) -> Left e
+            (_, Left e) -> Left e
+            (Right xs', Right xs'') -> case keyFromValues keyvals of
                 Left _ -> error "fromPersistValuesComposite': keyFromValues failed"
-                Right key -> Right (Entity key xs')
+                Right key -> Right (Entity key xs' (Just xs''))
 
 
 isIdField :: PersistEntity record => EntityField record typ -> Bool

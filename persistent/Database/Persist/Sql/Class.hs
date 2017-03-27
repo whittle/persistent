@@ -91,6 +91,7 @@ instance
     rawSqlProcessRow row = case splitAt nKeyFields row of
       (rowKey, rowVal) -> Entity A.<$> keyFromValues rowKey
                                  A.<*> fromPersistValues rowVal
+                                 A.<*> (Just <$> fromAutoPersistValues rowVal)
       where
         nKeyFields = length $ entityKeyFields entDef
         entDef = entityDef (Nothing :: Maybe record)

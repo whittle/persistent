@@ -291,9 +291,9 @@ instance PersistStoreRead SqlBackend where
         conn <- ask
         let t = entityDef $ dummyFromKey k
         let cols = T.intercalate ","
-                 $ map (connEscapeName conn . fieldDB) $ entityFields t
+                 $ map (connEscapeName conn . fieldDB) $ entityFieldsAndAutos t
             noColumns :: Bool
-            noColumns = null $ entityFields t
+            noColumns = null $ entityFieldsAndAutos t
         let wher = whereStmtForKey conn k
         let sql = T.concat
                 [ "SELECT "
@@ -308,9 +308,11 @@ instance PersistStoreRead SqlBackend where
             case res of
                 Nothing -> return Nothing
                 Just vals ->
-                    case fromPersistValues $ if noColumns then [] else vals of
-                        Left e -> error $ "get " ++ show k ++ ": " ++ unpack e
-                        Right v -> return $ Just v
+                    let vals' = if noColumns then [] else vals
+                    in case (fromPersistValues vals', fromAutoPersistValues vals') of
+                        (Left e, _) -> error $ "get " ++ show k ++ ": " ++ unpack e
+                        (_, Left e) -> error $ "get " ++ show k ++ ": " ++ unpack e
+                        (Right v, Right a) -> return $ Just $ Entity k v $ Just a
 instance PersistStoreRead SqlReadBackend where
     get k = withReaderT persistBackend $ get k
 instance PersistStoreRead SqlWriteBackend where
@@ -343,7 +345,7 @@ insrepHelper command k record = do
         , T.intercalate "," (map (const "?") columnNames)
         , ")"
         ]
-    vals = entityValues (Entity k record)
+    vals = entityValues (Entity k record Nothing)
 
 updateFieldDef :: PersistEntity v => Update v -> FieldDef
 updateFieldDef (Update f _ _) = persistFieldDef f

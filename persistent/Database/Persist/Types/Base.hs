@@ -118,6 +118,7 @@ data EntityDef = EntityDef
     , entityId      :: !FieldDef
     , entityAttrs   :: ![Attr]
     , entityFields  :: ![FieldDef]
+    , entityAutos   :: ![FieldDef]
     , entityUniques :: ![UniqueDef]
     , entityForeigns:: ![ForeignDef]
     , entityDerives :: ![Text]
@@ -142,6 +143,14 @@ keyAndEntityFields ent =
     Nothing -> entityId ent : entityFields ent
     Just _  -> entityFields ent
 
+entityFieldsAndAutos :: EntityDef -> [FieldDef]
+entityFieldsAndAutos ent = entityFields ent ++ entityAutos ent
+
+keyFieldsAndAutos :: EntityDef -> [FieldDef]
+keyFieldsAndAutos ent = case entityPrimary ent of
+    Nothing -> entityId ent : most
+    Just _ -> most
+  where most = entityFields ent ++ entityAutos ent
 
 type ExtraLine = [Text]
 
@@ -237,7 +246,7 @@ toEmbedEntityDef ent = embDef
 -- (DBName (packPTH "unique_age")) [(HaskellName (packPTH "age"), DBName (packPTH "age"))] []
 --
 data UniqueDef = UniqueDef
-    { uniqueHaskell :: !HaskellName 
+    { uniqueHaskell :: !HaskellName
     , uniqueDBName  :: !DBName
     , uniqueFields  :: ![(HaskellName, DBName)]
     , uniqueAttrs   :: ![Attr]

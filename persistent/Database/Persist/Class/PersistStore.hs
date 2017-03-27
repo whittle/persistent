@@ -10,9 +10,7 @@ module Database.Persist.Class.PersistStore
     , PersistCore (..)
     , PersistStoreRead (..)
     , PersistStoreWrite (..)
-    , getEntity
     , getJust
-    , getJustEntity
     , belongsTo
     , belongsToJust
     , insertEntity
@@ -85,7 +83,7 @@ class
   ) => PersistStoreRead backend where
     -- | Get a record by identifier, if available.
     get :: (MonadIO m, PersistRecordBackend record backend)
-        => Key record -> ReaderT backend m (Maybe record)
+        => Key record -> ReaderT backend m (Maybe (Entity record))
 
 class
   ( Show (BackendKey backend), Read (BackendKey backend)
@@ -136,7 +134,7 @@ class
     -- @mapM_ insertKey@.
     insertEntityMany :: (MonadIO m, PersistRecordBackend record backend)
                      => [Entity record] -> ReaderT backend m ()
-    insertEntityMany = mapM_ (\(Entity k record) -> insertKey k record)
+    insertEntityMany = mapM_ (\(Entity k record _) -> insertKey k record)
 
     -- | Create a new record in the database using the given key.
     insertKey :: (MonadIO m, PersistRecordBackend record backend)
@@ -170,7 +168,7 @@ class
     -- Note that this function will throw an exception if the given key is not
     -- found in the database.
     updateGet :: (MonadIO m, PersistRecordBackend record backend)
-              => Key record -> [Update record] -> ReaderT backend m record
+              => Key record -> [Update record] -> ReaderT backend m (Entity record)
     updateGet key ups = do
         update key ups
         get key >>= maybe (liftIO $ throwIO $ KeyNotFound $ show key) return
@@ -182,36 +180,20 @@ getJust :: ( PersistStoreRead backend
            , Show (Key record)
            , PersistRecordBackend record backend
            , MonadIO m
-           ) => Key record -> ReaderT backend m record
+           ) => Key record -> ReaderT backend m (Entity record)
 getJust key = get key >>= maybe
   (liftIO $ throwIO $ PersistForeignConstraintUnmet $ T.pack $ show key)
   return
-
--- | Same as 'getJust', but returns an 'Entity' instead of just the record.
--- @since 2.6.1
-getJustEntity
-  :: (PersistEntityBackend record ~ BaseBackend backend
-     ,MonadIO m
-     ,PersistEntity record
-     ,PersistStoreRead backend)
-  => Key record -> ReaderT backend m (Entity record)
-getJustEntity key = do
-  record <- getJust key
-  return $
-    Entity
-    { entityKey = key
-    , entityVal = record
-    }
 
 -- | Curry this to make a convenience function that loads an associated model.
 --
 -- > foreign = belongsTo foreignId
 belongsTo ::
   ( PersistStoreRead backend
-  , PersistEntity ent1
-  , PersistRecordBackend ent2 backend
+  , PersistEntity record1
+  , PersistRecordBackend record2 backend
   , MonadIO m
-  ) => (ent1 -> Maybe (Key ent2)) -> ent1 -> ReaderT backend m (Maybe ent2)
+  ) => (Entity record1 -> Maybe (Key record2)) -> Entity record1 -> ReaderT backend m (Maybe (Entity record2))
 belongsTo foreignKeyField model = case foreignKeyField model of
     Nothing -> return Nothing
     Just f -> get f
@@ -219,32 +201,21 @@ belongsTo foreignKeyField model = case foreignKeyField model of
 -- | Same as 'belongsTo', but uses @getJust@ and therefore is similarly unsafe.
 belongsToJust ::
   ( PersistStoreRead backend
-  , PersistEntity ent1
-  , PersistRecordBackend ent2 backend
+  , PersistEntity record1
+  , PersistRecordBackend record2 backend
   , MonadIO m
   )
-  => (ent1 -> Key ent2) -> ent1 -> ReaderT backend m ent2
+  => (Entity record1 -> Key record2) -> Entity record1 -> ReaderT backend m (Entity record2)
 belongsToJust getForeignKey model = getJust $ getForeignKey model
 
 -- | Like @insert@, but returns the complete @Entity@.
 insertEntity ::
     ( PersistStoreWrite backend
-    , PersistRecordBackend e backend
+    , PersistRecordBackend record backend
     , MonadIO m
-    ) => e -> ReaderT backend m (Entity e)
-insertEntity e = do
-    eid <- insert e
-    return $ Entity eid e
-
--- | Like @get@, but returns the complete @Entity@.
-getEntity ::
-    ( PersistStoreWrite backend
-    , PersistRecordBackend e backend
-    , MonadIO m
-    ) => Key e -> ReaderT backend m (Maybe (Entity e))
-getEntity key = do
-    maybeModel <- get key
-    return $ fmap (key `Entity`) maybeModel
+    ) => record -> ReaderT backend m (Entity record)
+insertEntity model = do
+    insert model >>= getJust
 
 -- | Like 'insertEntity' but just returns the record instead of 'Entity'.
 -- @since 2.6.1
@@ -257,4 +228,3 @@ insertRecord
 insertRecord record = do
   insert_ record
   return $ record
-
