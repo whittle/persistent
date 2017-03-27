@@ -2,9 +2,5 @@ resolver: lts-8.2
 packages:
   - ./persistent
   - ./persistent-template
-  - ./persistent-sqlite
   - ./persistent-test
-  - ./persistent-mongoDB
   - ./persistent-mysql
-  - ./persistent-postgresql
-  - ./persistent-redis
