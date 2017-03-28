@@ -58,7 +58,7 @@ Baz
     bin Int
 |]
 
-share [mkPersist sqlSettings { mpsGeneric = False }] [persistLowerCase|
+share [mkPersist sqlSettings { mpsEntityJSON = Just entityJSONWithAuto }] [persistLowerCase|
 User json
     authSubject Text
     %roleCount Int
@@ -96,6 +96,15 @@ main = hspec $ do
         it "decode" $
             decode "{\"id\": 0, \"name\":\"Michael\",\"age\":27,\"address\":{\"street\":\"Narkis\",\"city\":\"Maalot\"}}" `shouldBe` Just
                 (Entity key (Person "Michael" (Just 27) $ Address "Narkis" "Maalot" Nothing) Nothing)
+    describe "JSON serialization for Entity with auto-columns" $ do
+        let key = UserKey 0
+        prop "to/from is idempotent" $ \(user, mUserAuto) ->
+            decode (encode (Entity key user mUserAuto)) == Just (Entity key user mUserAuto)
+        it "decode" $ do
+            decode "{\"id\": 0, \"authSubject\":\"foo\", \"roleCount\":2}" `shouldBe` Just
+                (Entity key (User "foo") (Just (UserAuto 2)))
+            decode "{\"id\": 0, \"authSubject\":\"bar\"}" `shouldBe` Just
+                (Entity key (User "bar") Nothing)
     it "lens operations" $ do
         let street1 = "street1"
             city1 = "city1"

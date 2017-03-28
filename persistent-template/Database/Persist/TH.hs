@@ -31,6 +31,7 @@ module Database.Persist.TH
     , mpsEntityJSON
     , mpsGenerateLenses
     , EntityJSON(..)
+    , entityJSONWithAuto
     , mkPersistSettings
     , sqlSettings
     , sqlOnlySettings
@@ -377,6 +378,12 @@ mkPersistSettings t = MkPersistSettings
         , entityFromJSON = 'entityIdFromJSON
         }
     , mpsGenerateLenses = False
+    }
+
+entityJSONWithAuto :: EntityJSON
+entityJSONWithAuto = EntityJSON
+    { entityToJSON = 'entityIdAutoToJSON
+    , entityFromJSON = 'entityIdAutoFromJSON
     }
 
 -- | Use the 'SqlPersist' backend.
@@ -1017,6 +1024,7 @@ mkEntity entMap mps t = do
     let nameS = unpack nameT
     let clazz = ConT ''PersistEntity `AppT` genDataType
     atd <- mkAutoTypeDec mps t
+    aj <- mkAutoJSON mps t
     tpf <- mkToPersistFields mps nameS t
     fpv <- mkFromPersistValues mps t
     fapv <- mkFromAutoPersistValues mps t
@@ -1088,7 +1096,7 @@ mkEntity entMap mps t = do
         , FunD 'persistIdField [normalClause [] (ConE $ keyIdName t)]
         , FunD 'fieldLens lensClauses
         ]
-      ] `mappend` lenses) `mappend` keyInstanceDecs
+      ] `mappend` lenses) `mappend` keyInstanceDecs `mappend` aj
   where
     genDataType = genericDataType mps entName backendT
     entName = entityHaskell t
@@ -1693,6 +1701,50 @@ mkJSON mps def = do
                     parseJSON = $(varE (entityFromJSON entityJSON))
                 |]
             return $ toJSONI : fromJSONI : entityJSONIs
+
+mkAutoJSON :: MkPersistSettings -> EntityDef -> Q [Dec]
+mkAutoJSON _ def | not ("json" `elem` entityAttrs def) = return []
+mkAutoJSON mps def = do
+    pureE <- [|pure|]
+    apE' <- [|(<*>)|]
+    packE <- [|pack|]
+    dotEqualE <- [|(.=)|]
+    dotColonE <- [|(.:)|]
+    dotColonQE <- [|(.:?)|]
+    objectE <- [|object|]
+    obj <- newName "obj"
+    mzeroE <- [|mzero|]
+
+    xs <- mapM (newName . unpack . unHaskellNameForJSON . fieldHaskell)
+        $ entityAutos def
+
+    let conName = mkName $ unpack $ (unHaskellName $ entityHaskell def) ++ "Auto"
+        typ = ConT ''Auto `AppT` genericDataType mps (entityHaskell def) backendT
+        toJSONI = typeInstanceD ''ToJSON (mpsGeneric mps) typ [toJSON']
+        toJSON' = FunD 'toJSON $ return $ normalClause
+            [ConP conName $ map VarP xs]
+            (objectE `AppE` ListE pairs)
+        pairs = zipWith toPair (entityAutos def) xs
+        toPair f x = InfixE
+            (Just (packE `AppE` LitE (StringL $ unpack $ unHaskellName $ fieldHaskell f)))
+            dotEqualE
+            (Just $ VarE x)
+        fromJSONI = typeInstanceD ''FromJSON (mpsGeneric mps) typ [parseJSON']
+        parseJSON' = FunD 'parseJSON
+            [ normalClause [ConP 'Object [VarP obj]]
+                (foldl'
+                    (\x y -> InfixE (Just x) apE' (Just y))
+                    (pureE `AppE` ConE conName)
+                    pulls
+                )
+            , normalClause [WildP] mzeroE
+            ]
+        pulls = map toPull $ entityAutos def
+        toPull f = InfixE
+            (Just $ VarE obj)
+            (if maybeNullable f then dotColonQE else dotColonE)
+            (Just $ AppE packE $ LitE $ StringL $ unpack $ unHaskellName $ fieldHaskell f)
+    return [toJSONI, fromJSONI]
 
 mkClassP :: Name -> [Type] -> Pred
 #if MIN_VERSION_template_haskell(2,10,0)

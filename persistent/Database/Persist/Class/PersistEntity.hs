@@ -39,7 +39,7 @@ import Data.Aeson.Text (encodeToTextBuilder)
 import Data.Aeson.Encode (encodeToTextBuilder)
 #endif
 import Data.Attoparsec.ByteString (parseOnly)
-import Control.Applicative as A ((<$>), (<*>))
+import Control.Applicative as A ((<$>), (<*>), optional)
 import Data.Monoid (mappend)
 import qualified Data.HashMap.Strict as HM
 import Data.Typeable (Typeable)
@@ -306,7 +306,7 @@ entityIdAutoFromJSON :: (PersistEntity record, FromJSON record, FromJSON (Key re
                      => Value -> Parser (Entity record)
 entityIdAutoFromJSON value@(Object o) = Entity <$> o .: "id"
                                                <*> parseJSON value
-                                               <*> parseJSON value
+                                               <*> optional (parseJSON value)
 entityIdAutoFromJSON _ = fail "entityIdAutoFromJSON: not an object"
 
 

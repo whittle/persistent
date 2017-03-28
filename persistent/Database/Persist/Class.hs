@@ -54,6 +54,7 @@ module Database.Persist.Class
     -- * JSON utilities
     , keyValueEntityToJSON, keyValueEntityFromJSON
     , entityIdToJSON, entityIdFromJSON
+    , entityIdAutoToJSON, entityIdAutoFromJSON
     , toPersistValueJSON, fromPersistValueJSON
     ) where
 
