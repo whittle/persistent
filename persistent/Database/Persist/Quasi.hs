@@ -412,8 +412,8 @@ takeCols _ _ _ = Nothing
 
 takeAutos :: (Text -> String -> Maybe FieldDef) -> PersistSettings -> [Text] -> Maybe FieldDef
 takeAutos _ _ ("deriving":_) = Nothing
-takeAutos onErr ps (n:typ:rest)
-    | not (T.null n) && ("%" `T.isPrefixOf` n) && isLower (T.head n) =
+takeAutos onErr ps (n':typ:rest)
+    | ("%" `T.isPrefixOf` n') && not (T.null n) && isLower (T.head n) =
         case parseFieldType typ of
             Left err -> onErr typ err
             Right ft -> Just FieldDef
@@ -425,6 +425,9 @@ takeAutos onErr ps (n:typ:rest)
                 , fieldStrict = True
                 , fieldReference = NoReference
                 }
+  where
+    n | Just x <- T.stripPrefix "%" n' = x
+      | otherwise = n'
 takeAutos _ _ _ = Nothing
 
 getDbName :: PersistSettings -> Text -> [Text] -> Text

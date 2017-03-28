@@ -58,6 +58,17 @@ Baz
     bin Int
 |]
 
+share [mkPersist sqlSettings { mpsGeneric = False }] [persistLowerCase|
+User json
+    authSubject Text
+    %roleCount Int
+    deriving Show Eq
+Role
+    userId UserId
+    name Text
+    deriving Show Eq
+|]
+
 arbitraryT :: Gen Text
 arbitraryT = pack A.<$> arbitrary
 
@@ -65,6 +76,10 @@ instance Arbitrary Person where
     arbitrary = Person <$> arbitraryT A.<*> arbitrary <*> arbitrary
 instance Arbitrary Address where
     arbitrary = Address <$> arbitraryT <*> arbitraryT <*> arbitrary
+instance Arbitrary User where
+    arbitrary = User <$> arbitraryT
+instance Arbitrary (Auto User) where
+    arbitrary = UserAuto <$> arbitrary
 
 main :: IO ()
 main = hspec $ do

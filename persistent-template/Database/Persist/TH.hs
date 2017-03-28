@@ -992,7 +992,23 @@ fromAutoValues t funName conE fields = do
     patternSuccess [] = do
         rightE <- [|Right|]
         return $ normalClause [ListP []] (rightE `AppE` conE)
-    patternSuccess fieldsNE = undefined -- FIXME
+    patternSuccess fieldsNE = do
+        x1 <- newName "x1"
+        restNames <- mapM (\i -> newName $ "x" `mappend` show i) [2..length fieldsNE]
+        (fpv1:mkPersistValues) <- mapM mkPvFromFd fieldsNE
+        app1E <- [|(<$>)|]
+        let conApp = infixFromPersistValue app1E fpv1 conE x1
+        applyE <- [|(A.<$>)|]
+        let applyFromPersistValue = infixFromPersistValue applyE
+        return $ normalClause
+            [ListP $ map VarP (x1:restNames)]
+            (foldl' (\exp (name, fpv) -> applyFromPersistValue fpv exp name) conApp (zip restNames mkPersistValues))
+      where
+        infixFromPersistValue applyE fpv exp name =
+          UInfixE exp applyE (fpv `AppE` VarE name)
+        mkPvFromFd = mkPersistValue . unHaskellName . fieldHaskell
+        mkPersistValue fieldName = [|mapLeft (fieldError fieldName) . fromPersistValue|]
+
 
 mkEntity :: EntityMap -> MkPersistSettings -> EntityDef -> Q [Dec]
 mkEntity entMap mps t = do
