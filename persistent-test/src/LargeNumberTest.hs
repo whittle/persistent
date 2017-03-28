@@ -31,7 +31,7 @@ specs = describe "persistent" $ do
   it "large numbers" $ db $ do
       let go x = do
               xid <- insert x
-              x' <- get xid
+              x' <- (fmap.fmap) entityVal $ get xid
               liftIO $ x' @?= Just x
 
       go $ Number maxBound 0 0 0 0

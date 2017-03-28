@@ -28,6 +28,5 @@ specs = describe "Custom persist field" $ do
   it "should read what it wrote" $ db $ do
     let originalBlogPost = BlogPost "article"
     blogPostId <- insert originalBlogPost
-    Just newBlogPost <- get blogPostId
+    Just newBlogPost <- (fmap.fmap) entityVal $ get blogPostId
     liftIO $ originalBlogPost @?= newBlogPost
-

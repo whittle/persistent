@@ -119,13 +119,13 @@ specs = describe "composite" $
     it "Insert" $ db $ do
       kp1 <- insert p1
       matchParentK kp1 @== Right ("a1","b1",11)
-      mp <- get kp1
+      mp <- (fmap.fmap) entityVal $ get kp1
       isJust mp @== True
       let Just p11 = mp
       p1 @== p11
       xs <- selectList [TestParentId ==. kp1] []
       length xs @== 1
-      let [Entity newkp1 newp1] = xs
+      let [Entity newkp1 newp1 Nothing] = xs -- FIXME: Just ()
       matchParentK kp1 @== matchParentK newkp1
       p1 @== newp1
 
@@ -134,7 +134,7 @@ specs = describe "composite" $
       kp2 <- insert p2
       xs <- selectList [TestParentId <-. [kp1,kp2]] []
       length xs @== 2
-      let [e1@(Entity newkp1 newp1),e2@(Entity newkp2 newp2)] = xs
+      let [e1@(Entity newkp1 newp1 Nothing),e2@(Entity newkp2 newp2 Nothing)] = xs -- FIXME: Just ()
       matchParentK kp1 @== matchParentK newkp1
       matchParentK kp2 @== matchParentK newkp2
       p1 @== newp1
@@ -145,7 +145,7 @@ specs = describe "composite" $
       kp2 <- insert p2
       xs <- selectList [TestParentId !=. kp1] []
       length xs @== 1
-      let [Entity newkp2 newp2] = xs
+      let [Entity newkp2 newp2 Nothing] = xs -- FIXME: Just ()
       matchParentK kp2 @== matchParentK newkp2
 
     it "Filter by Id with 'in'" $ db $ do
@@ -153,7 +153,7 @@ specs = describe "composite" $
       kp2 <- insert p2
       xs <- selectList [TestParentId <-. [kp1,kp2]] []
       length xs @== 2
-      let [Entity newkp1 newp1,Entity newkp2 newp2] = xs
+      let [Entity newkp1 newp1 Nothing,Entity newkp2 newp2 Nothing] = xs -- FIXME: Just ()
       matchParentK kp1 @== matchParentK newkp1
       matchParentK kp2 @== matchParentK newkp2
 
@@ -162,7 +162,7 @@ specs = describe "composite" $
       kp2 <- insert p2
       xs <- selectList [TestParentId /<-. [kp1]] []
       length xs @== 1
-      let [Entity newkp2 newp2] = xs
+      let [Entity newkp2 newp2 Nothing] = xs -- FIXME: Just ()
       matchParentK kp2 @== matchParentK newkp2
 
     it "Filter by Id with 'not in' with no data" $ db $ do
@@ -175,7 +175,7 @@ specs = describe "composite" $
       kp1 <- insert p1
       _ <- insert p2
       kc1 <- insert c1
-      mc <- get kc1
+      mc <- (fmap.fmap) entityVal $ get kc1
       isJust mc @== True
       let Just c11 = mc
       c1 @== c11
@@ -218,13 +218,13 @@ specs = describe "composite" $
     it "Update" $ db $ do
       kp1 <- insert p1
       _ <- update kp1 [TestParentExtra44 =. "q1"]
-      newkps1 <- get kp1
+      newkps1 <- (fmap.fmap) entityVal $ get kp1
       newkps1 @== Just (TestParent "a1" "b1" 11 "q1")
 
     it "Replace Parent" $ db $ do
       kp1 <- insert p1
       _ <- replace kp1 p1'
-      newp1 <- get kp1
+      newp1 <- (fmap.fmap) entityVal $ get kp1
       newp1 @== Just p1'
 
     it "Replace Child" $ db $ do
@@ -232,7 +232,7 @@ specs = describe "composite" $
       _ <- insert p1
       kc1 <- insert c1
       _ <- replace kc1 c1'
-      newc1 <- get kc1
+      newc1 <- (fmap.fmap) entityVal $ get kc1
       newc1 @== Just c1'
 
     it "Insert Many to Many" $ db $ do
@@ -247,7 +247,7 @@ specs = describe "composite" $
       kca1 <- insert ca1
       matchCitizenAddressK kca1 @== matchK2 kc1 ka1
 
-      mca <- get kca1
+      mca <- (fmap.fmap) entityVal $ get kca1
       isJust mca @== True
       let Just newca1 = mca
       ca1 @== newca1
@@ -260,15 +260,15 @@ specs = describe "composite" $
 
       xs <- selectList [CitizenAddressId ==. kca1] []
       length xs @== 1
-      let [Entity newkca1 newca2] = xs
+      let [Entity newkca1 newca2 Nothing] = xs -- FIXME: Just ()
       matchCitizenAddressK kca1 @== matchCitizenAddressK newkca1
       ca1 @== newca2
     it "insertMany" $ db $ do
       [kp1, kp2] <- insertMany [p1, p2]
-      newp1 <- get kp1
+      newp1 <- (fmap.fmap) entityVal $ get kp1
       newp1 @== Just p1
 
-      newp2 <- get kp2
+      newp2 <- (fmap.fmap) entityVal $ get kp2
       newp2 @== Just p2
     it "RawSql Key instance" $ db $ do
       key <- insert p1
@@ -277,7 +277,7 @@ specs = describe "composite" $
     it "RawSql Entity instance" $ db $ do
       key <- insert p1
       newp1 <- rawSql "SELECT ?? FROM test_parent LIMIT 1" []
-      [Entity key p1] @== newp1
+      [Entity key p1 Nothing] @== newp1 -- FIXME: Just ()
 
 #endif
 

@@ -46,10 +46,9 @@ specs = describe "Maximum length attribute" $ do
         b' = "123"
     t1k <- insert t1
     t2k <- insert t2
-    Just t1v <- get t1k
-    Just t2v <- get t2k
+    Just t1v <- (fmap.fmap) entityVal $ get t1k
+    Just t2v <- (fmap.fmap) entityVal $ get t2k
     liftIO $ do t1v @?= t1
                 if t2v == t2
                   then t2v @?= t2 -- FIXME: why u no truncate?
                   else t2v @?= t2'
-

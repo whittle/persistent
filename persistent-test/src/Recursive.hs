@@ -38,5 +38,5 @@ specs = describe "recursive definitions" $ do
     let m2 = MenuObject $ Just $ SubType [m1]
     let m3 = MenuObject $ Just $ SubType [m2]
     k3 <- insert m3
-    m3' <- get k3
+    m3' <- (fmap.fmap) entityVal $ get k3
     m3' @== Just m3

@@ -81,9 +81,9 @@ specs = describe "rename specs" $ do
       now <- liftIO getCurrentTime
       let key = IdTableKey $ utctDay now
       insertKey key rec
-      Just rec' <- get key
+      Just rec' <- (fmap.fmap) entityVal $ get key
       rec' @== rec
-      (Entity key' _):_ <- selectList ([] :: [Filter IdTable]) []
+      (Entity key' _ _):_ <- selectList ([] :: [Filter IdTable]) []
       key' @== key
 
 #ifndef WITH_MYSQL

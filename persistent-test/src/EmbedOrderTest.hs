@@ -45,7 +45,7 @@ specs = describe "embedded entities" $ do
   it "preserves ordering" $ db $ do
     let foo = Foo [Bar "b" "u" "g"]
     fooId <- insert foo
-    Just otherFoo <- get fooId
+    Just otherFoo <- (fmap.fmap) entityVal $ get fooId
     foo @== otherFoo
 
   it "PersistMap PersistValue serializaion" $ db $ do

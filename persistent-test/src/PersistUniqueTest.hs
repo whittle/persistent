@@ -35,5 +35,5 @@ specs = describe "custom primary key" $ do
     k <- insert $ Fo 3 b
     Just vk <- get k
     Just vu <- getBy (UniqueBar b)
-    vu @== Entity k vk
+    vu @== vk
 #endif
