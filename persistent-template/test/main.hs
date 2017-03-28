@@ -77,10 +77,10 @@ main = hspec $ do
     describe "JSON serialization for Entity" $ do
         let key = PersonKey 0
         prop "to/from is idempotent" $ \person ->
-            decode (encode (Entity key person)) == Just (Entity key (person :: Person))
+            decode (encode (Entity key person Nothing)) == Just (Entity key (person :: Person) Nothing)
         it "decode" $
             decode "{\"id\": 0, \"name\":\"Michael\",\"age\":27,\"address\":{\"street\":\"Narkis\",\"city\":\"Maalot\"}}" `shouldBe` Just
-                (Entity key (Person "Michael" (Just 27) $ Address "Narkis" "Maalot" Nothing))
+                (Entity key (Person "Michael" (Just 27) $ Address "Narkis" "Maalot" Nothing) Nothing)
     it "lens operations" $ do
         let street1 = "street1"
             city1 = "city1"

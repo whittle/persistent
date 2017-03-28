@@ -463,6 +463,28 @@ sumConstrName mps t FieldDef {..} = mkName $ unpack $ concat
     , "Sum"
     ]
 
+mkAutoTypeDec :: MkPersistSettings -> EntityDef -> Q Dec
+mkAutoTypeDec mps t =
+#if MIN_VERSION_template_haskell(2,12,0)
+    DataInstD [] ''Auto [recordType] Nothing [RecC name cols]
+        <$> fmap (pure . DerivClause Nothing) (mapM conT derivs)
+#elif MIN_VERSION_template_haskell(2,11,0)
+    DataInstD [] ''Auto [recordType] Nothing [RecC name cols]
+        <$> mapM conT derivs
+#else
+    return $ DataInstD [] ''Auto [recordType] [RecC name cols] derivs
+#endif
+  where
+    recordType = genericDataType mps (entityHaskell t) backendT
+    name = mkName $ unpack $ unHaskellName (entityHaskell t) ++ "Auto"
+    cols = map (mkCol $ entityHaskell t) $ entityAutos t
+    mkCol x fd@FieldDef {..} =
+        ( mkName $ unpack $ recName mps x fieldHaskell
+        , notStrict
+        , maybeIdType mps fd Nothing Nothing
+        )
+    derivs = map (mkName . unpack) $ entityDerives t
+
 uniqueTypeDec :: MkPersistSettings -> EntityDef -> Dec
 uniqueTypeDec mps t =
     DataInstD [] ''Unique
@@ -646,6 +668,12 @@ mkFromPersistValues mps t@(EntityDef { entitySum = True }) = do
 
 type Lens s t a b = forall f. Functor f => (a -> f b) -> s -> f t
 
+mkFromAutoPersistValues :: MkPersistSettings -> EntityDef -> Q [Clause]
+mkFromAutoPersistValues _ t =
+    fromAutoValues t "fromAutoPersistValues" entE $ entityAutos t
+  where
+    entE = ConE $ mkName $ unpack $ (unHaskellName $ entityHaskell t) ++ "Auto"
+
 lensPTH :: (s -> a) -> (s -> b -> t) -> Lens s t a b
 lensPTH sa sbt afb s = fmap (sbt s) (afb $ sa s)
 
@@ -656,40 +684,42 @@ mkLensClauses :: MkPersistSettings -> EntityDef -> Q [Clause]
 mkLensClauses mps t = do
     lens' <- [|lensPTH|]
     getId <- [|entityKey|]
-    setId <- [|\(Entity _ value) key -> Entity key value|]
+    setId <- [|\(Entity _ value auto) key -> Entity key value auto|]
     getVal <- [|entityVal|]
     dot <- [|(.)|]
     keyVar <- newName "key"
     valName <- newName "value"
+    autoName <- newName "auto"
     xName <- newName "x"
     let idClause = normalClause
             [ConP (keyIdName t) []]
             (lens' `AppE` getId `AppE` setId)
     if entitySum t
-        then return $ idClause : map (toSumClause lens' keyVar valName xName) (entityFields t)
-        else return $ idClause : map (toClause lens' getVal dot keyVar valName xName) (entityFields t)
+        then return $ idClause : map (toSumClause lens' keyVar valName autoName xName) (entityFields t)
+        else return $ idClause : map (toClause lens' getVal dot keyVar valName autoName xName) (entityFields t)
   where
-    toClause lens' getVal dot keyVar valName xName f = normalClause
+    toClause lens' getVal dot keyVar valName autoName xName f = normalClause
         [ConP (filterConName mps t f) []]
         (lens' `AppE` getter `AppE` setter)
       where
         fieldName = mkName $ unpack $ recName mps (entityHaskell t) (fieldHaskell f)
         getter = InfixE (Just $ VarE fieldName) dot (Just getVal)
         setter = LamE
-            [ ConP 'Entity [VarP keyVar, VarP valName]
+            [ ConP 'Entity [VarP keyVar, VarP valName, VarP autoName]
             , VarP xName
             ]
             $ ConE 'Entity `AppE` VarE keyVar `AppE` RecUpdE
                 (VarE valName)
                 [(fieldName, VarE xName)]
+              `AppE` VarE autoName
 
-    toSumClause lens' keyVar valName xName f = normalClause
+    toSumClause lens' keyVar valName autoName xName f = normalClause
         [ConP (filterConName mps t f) []]
         (lens' `AppE` getter `AppE` setter)
       where
         emptyMatch = Match WildP (NormalB $ VarE 'error `AppE` LitE (StringL "Tried to use fieldLens on a Sum type")) []
         getter = LamE
-            [ ConP 'Entity [WildP, VarP valName]
+            [ ConP 'Entity [WildP, VarP valName, WildP]
             ] $ CaseE (VarE valName)
             $ Match (ConP (sumConstrName mps t f) [VarP xName]) (NormalB $ VarE xName) []
 
@@ -697,10 +727,10 @@ mkLensClauses mps t = do
             -- a sum type and therefore could result in Maybe.
             : if length (entityFields t) > 1 then [emptyMatch] else []
         setter = LamE
-            [ ConP 'Entity [VarP keyVar, WildP]
+            [ ConP 'Entity [VarP keyVar, WildP, VarP autoName]
             , VarP xName
             ]
-            $ ConE 'Entity `AppE` VarE keyVar `AppE` (ConE (sumConstrName mps t f) `AppE` VarE xName)
+            $ ConE 'Entity `AppE` VarE keyVar `AppE` (ConE (sumConstrName mps t f) `AppE` VarE xName) `AppE` VarE autoName
 
 
 
@@ -950,14 +980,30 @@ fromValues t funName conE fields = do
           mkPersistValue fieldName = [|mapLeft (fieldError fieldName) . fromPersistValue|]
 
 
+fromAutoValues :: EntityDef -> Text -> Exp -> [FieldDef] -> Q [Clause]
+fromAutoValues t funName conE fields = do
+    x <- newName "x"
+    let funMsg = entityText t `mappend` ": " `mappend` funName `mappend` " failed on: "
+    patternMatchFailure <-
+      [|Left $ mappend funMsg (pack $ show $(return $ VarE x))|]
+    suc <- patternSuccess fields
+    return [ suc, normalClause [VarP x] patternMatchFailure ]
+  where
+    patternSuccess [] = do
+        rightE <- [|Right|]
+        return $ normalClause [ListP []] (rightE `AppE` conE)
+    patternSuccess fieldsNE = undefined -- FIXME
+
 mkEntity :: EntityMap -> MkPersistSettings -> EntityDef -> Q [Dec]
 mkEntity entMap mps t = do
     t' <- liftAndFixKeys entMap t
     let nameT = unHaskellName entName
     let nameS = unpack nameT
     let clazz = ConT ''PersistEntity `AppT` genDataType
+    atd <- mkAutoTypeDec mps t
     tpf <- mkToPersistFields mps nameS t
     fpv <- mkFromPersistValues mps t
+    fapv <- mkFromAutoPersistValues mps t
     utv <- mkUniqueToValues $ entityUniques t
     puk <- mkUniqueKeys t
     fkc <- mapM (mkForeignKeysComposite mps t) $ entityForeigns t
@@ -989,13 +1035,15 @@ mkEntity entMap mps t = do
       ([ TySynD (keyIdName t) [] $
             ConT ''Key `AppT` ConT (mkName nameS)
       , instanceD instanceConstraint clazz $
-        [ uniqueTypeDec mps t
+        [ atd
+        , uniqueTypeDec mps t
         , keyTypeDec
         , keyToValues'
         , keyFromValues'
         , FunD 'entityDef [normalClause [WildP] t']
         , tpf
         , FunD 'fromPersistValues fpv
+        , FunD 'fromAutoPersistValues fapv
         , toFieldNames
         , utv
         , puk
@@ -1393,6 +1441,7 @@ liftAndFixKeys entMap EntityDef{..} =
       entityId
       entityAttrs
       $(ListE <$> mapM (liftAndFixKey entMap) entityFields)
+      entityAutos
       entityUniques
       entityForeigns
       entityDerives
@@ -1422,6 +1471,7 @@ instance Lift EntityDef where
             entityId
             entityAttrs
             entityFields
+            entityAutos
             entityUniques
             entityForeigns
             entityDerives
