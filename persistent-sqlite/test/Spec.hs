@@ -41,7 +41,7 @@ main = hspec $ do
         runMigration migrateAll
         now <- liftIO getCurrentTime
         tid <- insert $ Test now
-        Just (Test now') <- (fmap.fmap) entityVal $ get tid
+        Just (Test now') <- get tid
         liftIO $ now' `shouldBe` now
     it "issue #564" $ asIO $ withSystemTempFile "test564.sqlite3"$ \fp h -> do
         hClose h
