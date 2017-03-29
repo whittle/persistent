@@ -45,13 +45,13 @@ specs = describe "sum types" $
         vc2 <- insert $ VehicleCarSum car2
         vb1 <- insert $ VehicleBicycleSum bike1
 
-        x1 <- (fmap.fmap) entityVal $ get vc1
+        x1 <- get vc1
         liftIO $ x1 @?= Just (VehicleCarSum car1)
 
-        x2 <- (fmap.fmap) entityVal $ get vc2
+        x2 <- get vc2
         liftIO $ x2 @?= Just (VehicleCarSum car2)
 
-        x3 <- (fmap.fmap) entityVal $ get vb1
+        x3 <- get vb1
         liftIO $ x3 @?= Just (VehicleBicycleSum bike1)
 
 asIO :: IO a -> IO a

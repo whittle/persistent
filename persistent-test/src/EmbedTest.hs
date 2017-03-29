@@ -293,7 +293,7 @@ specs = describe "embedded entities" $ do
       onId2 <- insert $ OnlyName "nombre2"
       let midValue = MapIdValue $ M.fromList [("foo", onId),("bar",onId2)]
       mK <- insert midValue
-      Just mv <- (fmap.fmap) entityVal $ get mK
+      Just mv <- get mK
       mv @== midValue
 
 #ifdef WITH_NOSQL

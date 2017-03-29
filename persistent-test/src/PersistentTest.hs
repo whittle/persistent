@@ -273,7 +273,7 @@ specs = describe "persistent" $ do
       results' @== [Entity micK mic26 Nothing] -- FIXME: Just ()
 
       p28 <- updateGet micK [PersonAge =. 28]
-      personAge (entityVal p28) @== 28
+      personAge p28 @== 28
 
 #ifdef WITH_NOSQL
       updateWhere [PersonName ==. "Michael"] [PersonAge =. 29]
@@ -281,7 +281,7 @@ specs = describe "persistent" $ do
       uc <- updateWhereCount [PersonName ==. "Michael"] [PersonAge =. 29]
       uc @== 1
 #endif
-      Just mic29 <- (fmap.fmap) entityVal $ get micK
+      Just mic29 <- get micK
       personAge mic29 @== 29
 
       let eli = Person "Eliezer" 2 $ Just "blue"
@@ -404,7 +404,7 @@ specs = describe "persistent" $ do
       Nothing <- get key2
 
       Just p2_91 <- get key91
-      p91 @== entityVal p2_91
+      p91 @== p2_91
 
 
   it "deleteBy" $ db $ do
@@ -420,7 +420,7 @@ specs = describe "persistent" $ do
       assertEmpty ps2'
 
       Just p32 <- get key3
-      p3 @== entityVal p32
+      p3 @== p32
 
 
   it "delete" $ db $ do
@@ -435,7 +435,7 @@ specs = describe "persistent" $ do
       assertEmpty pm2'
 
       Just p <- get key3
-      p3 @== entityVal p
+      p3 @== p
 
 #ifdef WITH_ZOOKEEPER
   it "toPathPiece . fromPathPiece" $  do
@@ -456,7 +456,7 @@ specs = describe "persistent" $ do
       let p3 = Person "Michael3" 27 Nothing
       replace key2 p3
       Just p <- get key2
-      entityVal p @== p3
+      p @== p3
 
       -- test replace an empty key
       delete key2
@@ -468,14 +468,14 @@ specs = describe "persistent" $ do
       let mic = Person "Michael" 25 Nothing
       micK <- insert mic
       Just p1 <- get micK
-      entityVal p1 @== mic
+      p1 @== mic
 
       replace micK $ Person "Michael" 25 Nothing
       Just p2 <- get micK
-      entityVal p2 @== mic
+      p2 @== mic
 
       replace micK $ Person "Michael" 26 Nothing
-      Just mic26 <- (fmap.fmap) entityVal $ get micK
+      Just mic26 <- get micK
       mic26 @/= mic
       personAge mic26 @== personAge mic + 1
 
@@ -499,9 +499,9 @@ specs = describe "persistent" $ do
       let p25 = Person "Michael" 25 Nothing
       key25 <- insert p25
       pBlue28 <- updateGet key25 [PersonAge =. 28, PersonName =. "Updated"]
-      entityVal pBlue28 @== Person "Updated" 28 Nothing
+      pBlue28 @== Person "Updated" 28 Nothing
       pBlue30 <- updateGet key25 [PersonAge +=. 2]
-      entityVal pBlue30 @== Person "Updated" 30 Nothing
+      pBlue30 @== Person "Updated" 30 Nothing
 
   it "upsert without updates" $ db $ do
       deleteWhere ([] :: [Filter Upsert])
@@ -555,7 +555,7 @@ specs = describe "persistent" $ do
   it "maybe update" $ db $ do
       let noAge = PersonMaybeAge "Michael" Nothing
       keyNoAge <- insert noAge
-      noAge2 <- fmap entityVal $ updateGet keyNoAge [PersonMaybeAgeAge +=. Just 2]
+      noAge2 <- updateGet keyNoAge [PersonMaybeAgeAge +=. Just 2]
       -- the correct answer is very debatable
 #ifdef WITH_NOSQL
       personMaybeAgeAge noAge2 @== Just 2
@@ -572,9 +572,9 @@ specs = describe "persistent" $ do
       key2 <- insert p2
       updateWhere [PersonName ==. "Michael2"]
                   [PersonAge +=. 3, PersonName =. "Updated"]
-      Just pBlue28 <- (fmap.fmap) entityVal $ get key2
+      Just pBlue28 <- get key2
       pBlue28 @== Person "Updated" 28 Nothing
-      Just p <- (fmap.fmap) entityVal $ get key1
+      Just p <- get key1
       p @== p1
 
 
@@ -694,7 +694,7 @@ specs = describe "persistent" $ do
 
   it "insertEntity" $ db $ do
       Entity k p _ <- insertEntity $ Person "name" 1 Nothing
-      Just p2 <- (fmap.fmap) entityVal $ get k
+      Just p2 <- get k
       p2 @== p
 
   it "insertRecord" $ db $ do
@@ -717,36 +717,36 @@ specs = describe "persistent" $ do
       let p = Person "pet owner" 30 Nothing
       person <- insert $ p
       let cat = Pet person "Mittens" Cat
-      p2 <- fmap entityVal $ getJust $ petOwnerId cat
+      p2 <- getJust $ petOwnerId cat
       p @== p2
       c <- insertEntity cat
-      p3 <- fmap entityVal $ belongsToJust (petOwnerId . entityVal) c
+      p3 <- belongsToJust petOwnerId $ entityVal c
       p @== p3
 
   it "retrieves a belongsTo association" $ db $ do
       let p = Person "pet owner" 30 Nothing
       person <- insert p
       let cat = MaybeOwnedPet (Just person) "Mittens" Cat
-      p2 <- fmap entityVal $ getJust $ fromJust $ maybeOwnedPetOwnerId cat
+      p2 <- getJust $ fromJust $ maybeOwnedPetOwnerId cat
       p @== p2
       c <- insertEntity cat
-      Just p4 <- (fmap.fmap) entityVal $ belongsTo (maybeOwnedPetOwnerId . entityVal) c
+      Just p4 <- belongsTo maybeOwnedPetOwnerId $ entityVal c
       p @== p4
 
   it "derivePersistField" $ db $ do
       person <- insert $ Person "pet owner" 30 Nothing
       catKey <- insert $ Pet person "Mittens" Cat
-      Just cat' <- (fmap.fmap) entityVal $ get catKey
+      Just cat' <- get catKey
       liftIO $ petType cat' @?= Cat
       dog <- insert $ Pet person "Spike" Dog
-      Just dog' <- (fmap.fmap) entityVal $ get dog
+      Just dog' <- get dog
       liftIO $ petType dog' @?= Dog
 
   it "derivePersistFieldJSON" $ db $ do
       let mittensCollar = PetCollar "Mittens\n1-714-668-9672" True
       pkey <- insert $ Person "pet owner" 30 Nothing
       catKey <- insert $ OutdoorPet pkey mittensCollar Cat
-      Just (OutdoorPet _ collar' _) <- (fmap.fmap) entityVal $ get catKey
+      Just (OutdoorPet _ collar' _) <- get catKey
       liftIO $ collar' @?= mittensCollar
 
 #ifdef WITH_ZOOKEEPER
@@ -932,10 +932,10 @@ specs = describe "persistent" $ do
     np2 <- insert $ NoPrefix2 4 np1a
     update np2 [UnprefixedRef =. np1b, SomeOtherFieldName =. 5]
 
-    mnp1a <- (fmap.fmap) entityVal $ get np1a
+    mnp1a <- get np1a
     liftIO $ mnp1a @?= Just (NoPrefix1 2)
     liftIO $ fmap someFieldName mnp1a @?= Just 2
-    mnp2 <- (fmap.fmap) entityVal $ get np2
+    mnp2 <- get np2
     liftIO $ fmap unprefixedRef mnp2 @?= Just np1b
     liftIO $ fmap someOtherFieldName mnp2 @?= Just 5
 
@@ -946,7 +946,7 @@ specs = describe "persistent" $ do
     let p = Person "Alice" 30 Nothing
     key@(PersonKey (SqlBackendKey i)) <- insert p
     liftIO $ fromSqlKey key `shouldBe` (i :: Int64)
-    mp <- (fmap.fmap) entityVal $ get $ toSqlKey i
+    mp <- get $ toSqlKey i
     liftIO $ mp `shouldBe` Just p
 #endif
 
@@ -979,7 +979,7 @@ specs = describe "persistent" $ do
     it "gets auto columns" $ db $ do
       let foo = AutoColumn "foo"
       k <- insert foo
-      Just e <- get k
+      Just e <- getEntity k
       liftIO $ entityKey e @?= k
       liftIO $ entityVal e @?= foo
       liftIO $ entityAuto e @?= Just (AutoColumnAuto 3)

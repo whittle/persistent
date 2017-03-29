@@ -60,7 +60,7 @@ specs = describe "data type specs" $
         rvals <- liftIO randomValues
         forM_ (take 1000 rvals) $ \x -> do
             key <- insert x
-            Just y <- (fmap.fmap) entityVal $ get key
+            Just y <- get key
             liftIO $ do
                 let check :: (Eq a, Show a) => String -> (DataTypeTable -> a) -> IO ()
                     check s f = (s, f x) @=? (s, f y)

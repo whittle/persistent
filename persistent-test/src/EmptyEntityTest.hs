@@ -32,5 +32,5 @@ specs = describe "empty entity" $
         _ <- runMigrationSilent dataTypeMigrate
 #endif
         x <- insert EmptyEntity
-        Just EmptyEntity <- (fmap.fmap) entityVal $ get x
+        Just EmptyEntity <- get x
         return ()

@@ -81,7 +81,7 @@ specs = describe "rename specs" $ do
       now <- liftIO getCurrentTime
       let key = IdTableKey $ utctDay now
       insertKey key rec
-      Just rec' <- (fmap.fmap) entityVal $ get key
+      Just rec' <- get key
       rec' @== rec
       (Entity key' _ _):_ <- selectList ([] :: [Filter IdTable]) []
       key' @== key

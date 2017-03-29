@@ -46,7 +46,7 @@ specs = describe "migration only" $ do
 #endif
         let tf = TwoField 5 "hello"
         tid <- insert tf
-        mtf <- (fmap.fmap) entityVal $ get tid
+        mtf <- get tid
         liftIO $ mtf @?= Just tf
         deleteWhere ([] :: [Filter TwoField])
 

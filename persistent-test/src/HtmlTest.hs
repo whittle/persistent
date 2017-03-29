@@ -35,7 +35,7 @@ specs = describe "html" $ do
         sequence_ $ replicate 1000 $ do
             x <- liftIO randomValue
             key <- insert $ HtmlTable x
-            Just (HtmlTable y) <- (fmap.fmap) entityVal $ get key
+            Just (HtmlTable y) <- get key
             liftIO $ do
                 renderHtml x @?= renderHtml y
 
