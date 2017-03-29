@@ -988,6 +988,7 @@ fromValues t funName conE fields = do
 
 
 fromAutoValues :: EntityDef -> Text -> Exp -> [FieldDef] -> Q [Clause]
+fromAutoValues _ _ conE [] = return [normalClause [WildP] (ConE 'Right `AppE` conE)]
 fromAutoValues t funName conE fields = do
     x <- newName "x"
     let funMsg = entityText t `mappend` ": " `mappend` funName `mappend` " failed on: "
@@ -996,9 +997,6 @@ fromAutoValues t funName conE fields = do
     suc <- patternSuccess fields
     return [ suc, normalClause [VarP x] patternMatchFailure ]
   where
-    patternSuccess [] = do
-        rightE <- [|Right|]
-        return $ normalClause [ListP []] (rightE `AppE` conE)
     patternSuccess fieldsNE = do
         x1 <- newName "x1"
         restNames <- mapM (\i -> newName $ "x" `mappend` show i) [2..length fieldsNE]
