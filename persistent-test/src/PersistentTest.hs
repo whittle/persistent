@@ -143,6 +143,14 @@ share [mkPersist persistSettings,  mkMigrate "testMigrate", mkDeleteCascade pers
     !yes Int
     ~no Int
     def Int
+
+#ifndef WITH_NOSQL
+  AutoColumn
+    comment Text
+    %likeCount Int default=3
+    deriving Eq
+    deriving Show
+#endif
 |]
 
 deriving instance Show (BackendKey backend) => Show (PetGeneric backend)
@@ -964,6 +972,17 @@ specs = describe "persistent" $ do
 
     it "works for [Text]"       $ runArrayAggTest "ident"    ["a", "c", "e", "g" :: Text]
     it "works for [Maybe Text]" $ runArrayAggTest "password" [Nothing, Just "b", Just "d", Just "h" :: Maybe Text]
+#endif
+
+#ifndef WITH_NOSQL
+  describe "auto columns" $ do
+    it "gets auto columns" $ db $ do
+      let foo = AutoColumn "foo"
+      k <- insert foo
+      Just e <- get k
+      liftIO $ entityKey e @?= k
+      liftIO $ entityVal e @?= foo
+      liftIO $ entityAuto e @?= Just (AutoColumnAuto 3)
 #endif
 
 -- | Reverses the order of the fields of an entity.  Used to test
