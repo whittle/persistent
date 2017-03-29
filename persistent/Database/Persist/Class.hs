@@ -9,7 +9,10 @@ module Database.Persist.Class
     , PersistStoreRead (..)
     , PersistStoreWrite (..)
     , PersistRecordBackend
+    , get
     , getJust
+    , getJustEntity
+    , updateGet
     , belongsTo
     , belongsToJust
     , insertEntity

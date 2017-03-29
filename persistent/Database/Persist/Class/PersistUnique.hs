@@ -102,7 +102,7 @@ class (PersistUniqueRead backend, PersistStoreWrite backend) => PersistUniqueWri
               when (null updates) (replace k record)
               return k
             Nothing           -> insert record
-        updateGet k updates
+        updateGetEntity k updates
 
 
 -- | Insert a value, checking for conflicts with any unique constraints.  If a
@@ -174,7 +174,7 @@ recordName = unHaskellName . entityHaskell . entityDef . Just
 -- Since 1.2.2.0
 replaceUnique :: (MonadIO m, Eq record, Eq (Unique record), PersistRecordBackend record backend, PersistUniqueWrite backend)
               => Key record -> record -> ReaderT backend m (Maybe (Unique record))
-replaceUnique key datumNew = getJust key >>= replaceOriginal
+replaceUnique key datumNew = getJustEntity key >>= replaceOriginal
   where
     uniqueKeysNew = persistUniqueKeys datumNew
     replaceOriginal original = do

@@ -287,7 +287,7 @@ instance PersistStoreWrite SqlWriteBackend where
 
 
 instance PersistStoreRead SqlBackend where
-    get k = do
+    getEntity k = do
         conn <- ask
         let t = entityDef $ dummyFromKey k
         let cols = T.intercalate ","
@@ -314,9 +314,9 @@ instance PersistStoreRead SqlBackend where
                         (_, Left e) -> error $ "get " ++ show k ++ ": " ++ unpack e
                         (Right v, Right a) -> return $ Just $ Entity k v $ Just a
 instance PersistStoreRead SqlReadBackend where
-    get k = withReaderT persistBackend $ get k
+    getEntity k = withReaderT persistBackend $ getEntity k
 instance PersistStoreRead SqlWriteBackend where
-    get k = withReaderT persistBackend $ get k
+    getEntity k = withReaderT persistBackend $ getEntity k
 
 dummyFromKey :: Key record -> Maybe record
 dummyFromKey = Just . recordTypeFromKey
