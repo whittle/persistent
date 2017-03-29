@@ -2,5 +2,7 @@ resolver: lts-8.2
 packages:
   - ./persistent
   - ./persistent-template
+  - ./persistent-sqlite
   - ./persistent-test
   - ./persistent-mysql
+  - ./persistent-postgresql

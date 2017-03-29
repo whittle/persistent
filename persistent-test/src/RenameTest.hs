@@ -92,7 +92,7 @@ specs = describe "rename specs" $ do
     it "user specified id, default=" $ db $ do
       let rec = IdTable "Foo" Nothing
       k <- insert rec
-      Just rec' <- get k
+      Just rec' <- (fmap.fmap) entityVal $ get k
       rec' @== rec
 #  endif
 #endif

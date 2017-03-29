@@ -187,11 +187,11 @@ specs = describe "composite" $
       kdad@(TreeKey dadt) <- insert $ Tree "dad" $ Just gpt
       kc <- insert $ Tree "child" $ Just dadt
       c <- getJust kc
-      treeFkparent c @== Just kdad
+      treeFkparent (entityVal c) @== Just kdad
       dad <- getJust kdad
-      treeFkparent dad @== Just kgp
+      treeFkparent (entityVal dad) @== Just kgp
       gp <- getJust kgp
-      treeFkparent gp @== Nothing
+      treeFkparent (entityVal gp) @== Nothing
 #endif
 
     it "Validate Key contents" $ db $ do
