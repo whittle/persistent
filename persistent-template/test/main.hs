@@ -58,7 +58,7 @@ Baz
     bin Int
 |]
 
-share [mkPersist sqlSettings { mpsEntityJSON = Just entityJSONWithAuto }] [persistLowerCase|
+share [mkPersist sqlSettings { mpsEntityJSON = Just entityJSONWithAuto, mpsGenerateLenses = True }] [persistLowerCase|
 User json
     authSubject Text
     %roleCount Int
@@ -119,6 +119,9 @@ main = hspec $ do
         (person1 ^. lpersonAddress) `shouldBe` address1
         (person1 ^. (lpersonAddress . laddressCity)) `shouldBe` city1
         (person1 & ((lpersonAddress . laddressCity) .~ city2)) `shouldBe` person2
+        let userA = UserAuto 2
+        (userA ^. userRoleCount) `shouldBe` 2
+
 
 (&) :: a -> (a -> b) -> b
 x & f = f x

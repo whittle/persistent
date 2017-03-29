@@ -1050,6 +1050,7 @@ mkEntity entMap mps t = do
     lensClauses <- mkLensClauses mps t
 
     lenses <- mkLenses mps t
+    autoLenses <- mkAutoLenses mps t
     let instanceConstraint = if not (mpsGeneric mps) then [] else
           [mkClassP ''PersistStore [backendT]]
 
@@ -1096,7 +1097,7 @@ mkEntity entMap mps t = do
         , FunD 'persistIdField [normalClause [] (ConE $ keyIdName t)]
         , FunD 'fieldLens lensClauses
         ]
-      ] `mappend` lenses) `mappend` keyInstanceDecs `mappend` aj
+      ] `mappend` lenses) `mappend` autoLenses `mappend` keyInstanceDecs `mappend` aj
   where
     genDataType = genericDataType mps entName backendT
     entName = entityHaskell t
@@ -1107,7 +1108,15 @@ entityText = unHaskellName . entityHaskell
 mkLenses :: MkPersistSettings -> EntityDef -> Q [Dec]
 mkLenses mps _ | not (mpsGenerateLenses mps) = return []
 mkLenses _ ent | entitySum ent = return []
-mkLenses mps ent = fmap mconcat $ forM (entityFields ent) $ \field -> do
+mkLenses mps ent = fmap mconcat $ forM (entityFields ent) $ mkLens mps ent False
+
+mkAutoLenses :: MkPersistSettings -> EntityDef -> Q [Dec]
+mkAutoLenses mps _ | not (mpsGenerateLenses mps) = return []
+mkAutoLenses _ ent | entitySum ent = return []
+mkAutoLenses mps ent = fmap mconcat $ forM (entityAutos ent) $ mkLens mps ent True
+
+mkLens :: MkPersistSettings -> EntityDef -> Bool -> FieldDef -> Q [Dec]
+mkLens mps ent isAuto field = do
     let lensName' = recNameNoUnderscore mps (entityHaskell ent) (fieldHaskell field)
         lensName = mkName $ unpack lensName'
         fieldName = mkName $ unpack $ "_" ++ lensName'
@@ -1129,7 +1138,8 @@ mkLenses mps ent = fmap mconcat $ forM (entityFields ent) $ \field -> do
         backend2 = backendName
         aT = maybeIdType mps field (Just backend1) Nothing
         bT = maybeIdType mps field (Just backend2) Nothing
-        mkST backend = genericDataType mps (entityHaskell ent) (VarT backend)
+        mkBase backend = genericDataType mps (entityHaskell ent) (VarT backend)
+        mkST = if isAuto then AppT (ConT ''Auto) . mkBase else mkBase
         sT = mkST backend1
         tT = mkST backend2
         t1 `arrow` t2 = ArrowT `AppT` t1 `AppT` t2
