@@ -234,7 +234,7 @@ convertPV f = (f .) . MySQL.convert
 -- | Get the corresponding @'Getter' 'PersistValue'@ depending on
 -- the type of the column.
 getGetter :: MySQLBase.Field -> Getter PersistValue
-getGetter field = go (MySQLBase.fieldType field) 
+getGetter field = go (MySQLBase.fieldType field)
                         (MySQLBase.fieldLength field)
                             (MySQLBase.fieldCharSet field)
   where
@@ -265,7 +265,7 @@ getGetter field = go (MySQLBase.fieldType field)
     go MySQLBase.VarChar    _ _  = convertPV PersistText
     go MySQLBase.VarString  _ _  = convertPV PersistText
     go MySQLBase.String     _ _  = convertPV PersistText
-    
+
     go MySQLBase.Blob       _ 63 = convertPV PersistByteString
     go MySQLBase.TinyBlob   _ 63 = convertPV PersistByteString
     go MySQLBase.MediumBlob _ 63 = convertPV PersistByteString
@@ -324,10 +324,10 @@ migrate' connectInfo allDefs getter val = do
         let foreigns = do
               Column { cName=cname, cReference=Just (refTblName, _a) } <- newcols
               return $ AlterColumn name (refTblName, addReference allDefs (refName name cname) refTblName cname)
-                 
-        let foreignsAlt = map (\fdef -> let (childfields, parentfields) = unzip (map (\((_,b),(_,d)) -> (b,d)) (foreignFields fdef)) 
+
+        let foreignsAlt = map (\fdef -> let (childfields, parentfields) = unzip (map (\((_,b),(_,d)) -> (b,d)) (foreignFields fdef))
                                         in AlterColumn name (foreignRefTableDBName fdef, AddReference (foreignRefTableDBName fdef) (foreignConstraintNameDBName fdef) childfields parentfields)) fdefs
-        
+
         return $ Right $ map showAlterDb $ (addTable newcols val): uniques ++ foreigns ++ foreignsAlt
       -- No errors and something found, migrate
       (_, _, ([], old')) -> do
@@ -386,7 +386,7 @@ findTypeOfColumn allDefs name col =
                    " (allDefs = " ++ show allDefs ++ ")")
           ((,) col) $ do
             entDef   <- find ((== name) . entityDB) allDefs
-            fieldDef <- find ((== col)  . fieldDB) (entityFields entDef)
+            fieldDef <- find ((== col)  . fieldDB) (entityFieldsAndAutos entDef)
             return (fieldType fieldDef)
 
 -- | Find out the maxlen of a column (default to 200)
@@ -395,7 +395,7 @@ findMaxLenOfColumn allDefs name col =
    maybe (col, 200)
          ((,) col) $ do
            entDef     <- find ((== name) . entityDB) allDefs
-           fieldDef   <- find ((== col) . fieldDB) (entityFields entDef)
+           fieldDef   <- find ((== col) . fieldDB) (entityFieldsAndAutos entDef)
            findMaxLenOfField fieldDef
 
 -- | Find out the maxlen of a field
@@ -980,7 +980,7 @@ mockMigrate _connectInfo allDefs _getter val = do
 
 
 -- | Mock a migration even when the database is not present.
--- This function will mock the migration for a database even when 
+-- This function will mock the migration for a database even when
 -- the actual database isn't already present in the system.
 mockMigration :: Migration -> IO ()
 mockMigration mig = do
@@ -1007,6 +1007,6 @@ mockMigration mig = do
                              connLogFunc = undefined,
                              connUpsertSql = undefined,
                              connMaxParams = Nothing}
-      result = runReaderT . runWriterT . runWriterT $ mig 
+      result = runReaderT . runWriterT . runWriterT $ mig
   resp <- result sqlbackend
   mapM_ T.putStrLn $ map snd $ snd resp

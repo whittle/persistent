@@ -177,7 +177,7 @@ foreignReference field = case fieldReference field of
 
 -- fieldSqlType at parse time can be an Exp
 -- This helps delay setting fieldSqlType until lift time
-data EntityDefSqlTypeExp = EntityDefSqlTypeExp EntityDef SqlTypeExp [SqlTypeExp]
+data EntityDefSqlTypeExp = EntityDefSqlTypeExp EntityDef SqlTypeExp [SqlTypeExp] [SqlTypeExp]
                            deriving Show
 
 data SqlTypeExp = SqlTypeExp FieldType
@@ -205,9 +205,10 @@ instance Lift FieldSqlTypeExp where
       [|FieldDef fieldHaskell fieldDB fieldType $(lift sqlTypeExp) fieldAttrs fieldStrict fieldReference|]
 
 instance Lift EntityDefSqlTypeExp where
-    lift (EntityDefSqlTypeExp ent sqlTypeExp sqlTypeExps) =
-        [|ent { entityFields = $(lift $ FieldsSqlTypeExp (entityFields ent) sqlTypeExps)
+    lift (EntityDefSqlTypeExp ent sqlTypeExp sqlTypeExpFields sqlTypeExpAutos) =
+        [|ent { entityFields = $(lift $ FieldsSqlTypeExp (entityFields ent) sqlTypeExpFields)
               , entityId = $(lift $ FieldSqlTypeExp (entityId ent) sqlTypeExp)
+              , entityAutos = $(lift $ FieldsSqlTypeExp (entityAutos ent) sqlTypeExpAutos)
               }
         |]
 
@@ -267,7 +268,8 @@ setEmbedField entName allEntities field = field
 mkEntityDefSqlTypeExp :: EmbedEntityMap -> EntityMap -> EntityDef -> EntityDefSqlTypeExp
 mkEntityDefSqlTypeExp emEntities entMap ent = EntityDefSqlTypeExp ent
     (getSqlType $ entityId ent)
-    $ (map getSqlType $ entityFields ent)
+    (map getSqlType $ entityFields ent)
+    (map getSqlType $ entityAutos ent)
   where
     getSqlType field = maybe
         (defaultSqlTypeExp field)
@@ -1473,7 +1475,7 @@ liftAndFixKeys entMap EntityDef{..} =
       entityId
       entityAttrs
       $(ListE <$> mapM (liftAndFixKey entMap) entityFields)
-      entityAutos
+      $(ListE <$> mapM (liftAndFixKey entMap) entityAutos)
       entityUniques
       entityForeigns
       entityDerives

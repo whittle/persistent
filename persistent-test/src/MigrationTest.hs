@@ -23,6 +23,10 @@ Target
 Source
     field3 Int
     field4 TargetId
+
+WithAutos
+    field5 T.Text
+    %field6 Int
 |]
 
 #ifndef WITH_NOSQL

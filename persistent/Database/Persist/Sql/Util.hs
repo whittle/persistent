@@ -19,7 +19,7 @@ import Database.Persist (
   , PersistEntity, PersistValue
   , keyFromValues, fromPersistValues, fromAutoPersistValues, fieldDB, entityId
   , entityPrimary, entityFields, entityKeyFields, fieldHaskell, compositeFields
-  , persistFieldDef, keyAndEntityFields
+  , persistFieldDef, keyAndEntityFields, entityFieldsAndAutos
   , DBName)
 import Database.Persist.Sql.Types (Sql, SqlBackend, connEscapeName)
 
@@ -27,7 +27,7 @@ entityColumnNames :: EntityDef -> SqlBackend -> [Sql]
 entityColumnNames ent conn =
      (if hasCompositeKey ent
       then [] else [connEscapeName conn $ fieldDB (entityId ent)])
-  <> map (connEscapeName conn . fieldDB) (entityFields ent)
+  <> map (connEscapeName conn . fieldDB) (entityFieldsAndAutos ent)
 
 keyAndEntityColumnNames :: EntityDef -> SqlBackend -> [Sql]
 keyAndEntityColumnNames ent conn = map (connEscapeName conn . fieldDB) (keyAndEntityFields ent)
@@ -51,7 +51,7 @@ dbColumns conn t = case entityPrimary t of
     Nothing -> escapeDB (entityId t) : flds
   where
     escapeDB = connEscapeName conn . fieldDB
-    flds = map escapeDB (entityFields t)
+    flds = map escapeDB (entityFieldsAndAutos t)
 
 parseEntityValues :: PersistEntity record
                   => EntityDef -> [PersistValue] -> Either Text (Entity record)
@@ -65,7 +65,8 @@ parseEntityValues t vals =
       Nothing -> fromPersistValues' vals
   where
     fromPersistValues' (kpv:xs) = -- oracle returns Double
-        case (fromPersistValues xs, fromAutoPersistValues xs) of
+        let (vs, as) = flip splitAt xs $ length $ entityFields t
+        in case (fromPersistValues vs, fromAutoPersistValues as) of
             (Left e, _) -> Left e
             (_, Left e) -> Left e
             (Right xs', Right xs'') -> case keyFromValues [kpv] of
@@ -76,7 +77,8 @@ parseEntityValues t vals =
     fromPersistValues' xs = Left $ pack ("error in fromPersistValues' xs=" ++ show xs)
 
     fromPersistValuesComposite' keyvals xs =
-        case (fromPersistValues xs, fromAutoPersistValues xs) of
+        let (vs, as) = flip splitAt xs $ length $ entityFields t
+        in case (fromPersistValues vs, fromAutoPersistValues as) of
             (Left e, _) -> Left e
             (_, Left e) -> Left e
             (Right xs', Right xs'') -> case keyFromValues keyvals of

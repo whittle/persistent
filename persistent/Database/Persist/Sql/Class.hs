@@ -20,6 +20,7 @@ module Database.Persist.Sql.Class
 
 import Control.Applicative as A ((<$>), (<*>))
 import Database.Persist
+import Data.List.Split (splitPlaces)
 import Data.Monoid ((<>))
 import Database.Persist.Sql.Types
 import Data.Text (Text, intercalate, pack)
@@ -81,19 +82,22 @@ instance
               $ map fieldDB
               -- Hacky for a composite key because
               -- it selects the same field multiple times
-              $ entityKeyFields entDef ++ entityFields entDef
+              $ entityKeyFields entDef ++ entityFieldsAndAutos entDef
           name = escape (entityDB entDef)
           entDef = entityDef (Nothing :: Maybe record)
     rawSqlColCountReason a =
         case fst (rawSqlCols (error "RawSql") a) of
           1 -> "one column for an 'Entity' data type without fields"
           n -> show n ++ " columns for an 'Entity' data type"
-    rawSqlProcessRow row = case splitAt nKeyFields row of
-      (rowKey, rowVal) -> Entity A.<$> keyFromValues rowKey
-                                 A.<*> fromPersistValues rowVal
-                                 A.<*> (Just <$> fromAutoPersistValues rowVal)
+    rawSqlProcessRow row = case splitPlaces [nKeyFields, nValFields, nAutoFields] row of
+        [rowKey, rowVal, rowAuto] -> Entity A.<$> keyFromValues rowKey
+                                            A.<*> fromPersistValues rowVal
+                                            A.<*> (Just <$> fromAutoPersistValues rowAuto)
+        _x -> error $ "rawSqlProcessRow for "<>show (unHaskellName $ entityHaskell entDef)<>" could not split "<>show row
       where
         nKeyFields = length $ entityKeyFields entDef
+        nValFields = length $ entityFields entDef
+        nAutoFields = length $ entityAutos entDef
         entDef = entityDef (Nothing :: Maybe record)
 
 -- | Since 1.0.1.
