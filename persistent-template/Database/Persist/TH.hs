@@ -1738,15 +1738,17 @@ mkAutoJSON mps def = do
             dotEqualE
             (Just $ VarE x)
         fromJSONI = typeInstanceD ''FromJSON (mpsGeneric mps) typ [parseJSON']
-        parseJSON' = FunD 'parseJSON
-            [ normalClause [ConP 'Object [VarP obj]]
-                (foldl'
-                    (\x y -> InfixE (Just x) apE' (Just y))
-                    (pureE `AppE` ConE conName)
-                    pulls
-                )
-            , normalClause [WildP] mzeroE
-            ]
+        parseClauses = if null $ entityAutos def
+            then [ normalClause [WildP] $ pureE `AppE` ConE conName ]
+            else [ normalClause [ConP 'Object [VarP obj]]
+                   (foldl'
+                     (\x y -> InfixE (Just x) apE' (Just y))
+                     (pureE `AppE` ConE conName)
+                     pulls
+                   )
+                 , normalClause [WildP] mzeroE
+                 ]
+        parseJSON' = FunD 'parseJSON parseClauses
         pulls = map toPull $ entityAutos def
         toPull f = InfixE
             (Just $ VarE obj)
