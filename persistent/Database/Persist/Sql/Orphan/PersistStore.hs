@@ -307,9 +307,9 @@ instance PersistStoreRead SqlBackend where
             res <- CL.head
             case res of
                 Nothing -> return Nothing
-                Just vals ->
-                    let vals' = if noColumns then [] else vals
-                    in case (fromPersistValues vals', fromAutoPersistValues vals') of
+                Just allVals ->
+                    let (fieldVals, autoVals) = flip splitAt allVals $ length $ entityFields t
+                    in case (fromPersistValues fieldVals, fromAutoPersistValues autoVals) of
                         (Left e, _) -> error $ "get " ++ show k ++ ": " ++ unpack e
                         (_, Left e) -> error $ "get " ++ show k ++ ": " ++ unpack e
                         (Right v, Right a) -> return $ Just $ Entity k v $ Just a
