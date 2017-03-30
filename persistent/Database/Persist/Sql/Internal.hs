@@ -26,7 +26,7 @@ mkColumns allDefs t =
     (cols, entityUniques t, entityForeigns t)
   where
     cols :: [Column]
-    cols = map go (entityFields t)
+    cols = map go (entityFieldsAndAutos t)
 
     tn :: DBName
     tn = entityDB t
