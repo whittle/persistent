@@ -148,6 +148,7 @@ share [mkPersist persistSettings,  mkMigrate "testMigrate", mkDeleteCascade pers
   AutoColumn
     comment Text
     %likeCount Int default=3
+    %generated Text default="Ipsum lorem"
     deriving Eq
     deriving Show
 #endif
@@ -982,7 +983,7 @@ specs = describe "persistent" $ do
       Just e <- getEntity k
       liftIO $ entityKey e @?= k
       liftIO $ entityVal e @?= foo
-      liftIO $ entityAuto e @?= Just (AutoColumnAuto 3)
+      liftIO $ entityAuto e @?= Just (AutoColumnAuto 3 "Ipsum lorem")
 #endif
 
 -- | Reverses the order of the fields of an entity.  Used to test

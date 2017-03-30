@@ -1003,7 +1003,7 @@ fromAutoValues t funName conE fields = do
         (fpv1:mkPersistValues) <- mapM mkPvFromFd fieldsNE
         app1E <- [|(<$>)|]
         let conApp = infixFromPersistValue app1E fpv1 conE x1
-        applyE <- [|(A.<$>)|]
+        applyE <- [|(A.<*>)|]
         let applyFromPersistValue = infixFromPersistValue applyE
         return $ normalClause
             [ListP $ map VarP (x1:restNames)]
