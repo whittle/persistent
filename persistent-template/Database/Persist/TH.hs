@@ -1035,6 +1035,8 @@ mkEntity entMap mps t = do
     let primaryField = entityId t
 
     fields <- mapM (mkField mps t) $ primaryField : entityFields t
+    autos <- mapM (mkField mps t) $ entityAutos t
+    let fieldsAndAutos = fields `mappend` autos
     toFieldNames <- mkToFieldNames $ entityUniques t
 
     (keyTypeDec, keyInstanceDecs) <- mkKeyTypeDec mps t
@@ -1081,9 +1083,9 @@ mkEntity entMap mps t = do
 #if MIN_VERSION_template_haskell(2,11,0)
             Nothing
 #endif
-            (map fst fields)
+            (map fst fieldsAndAutos)
             []
-        , FunD 'persistFieldDef (map snd fields)
+        , FunD 'persistFieldDef (map snd fieldsAndAutos)
         , TySynInstD
             ''PersistEntityBackend
 #if MIN_VERSION_template_haskell(2,9,0)
