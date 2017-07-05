@@ -650,7 +650,7 @@ getAlters allDefs tblName (c1, u1) (c2, u2) =
         [DropReference n | Just (_, n) <- [cReference col]] ++
         [Drop]
 
-    getAltersU [] old = map (DropUniqueConstraint . fst) old
+    getAltersU [] old = map DropUniqueConstraint $ filter (not . isManual) $ map fst old
     getAltersU ((name, cols):news) old =
         case lookup name old of
             Nothing ->
@@ -667,6 +667,7 @@ getAlters allDefs tblName (c1, u1) (c2, u2) =
                                       (_, ml) = findMaxLenOfColumn allDefs tblName col
                                    in (col', ty, ml)
 
+    isManual (DBName x) = "__manual_" `T.isPrefixOf` x
 
 -- | @findAlters newColumn oldColumns@ finds out what needs to be
 -- changed in the columns @oldColumns@ for @newColumn@ to be
