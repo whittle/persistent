@@ -42,6 +42,7 @@ library
                    , resourcet             >= 0.4.10
                    , monad-logger
                    , resource-pool
+                   , time
     exposed-modules: Database.Persist.MySQL
     ghc-options:     -Wall
 

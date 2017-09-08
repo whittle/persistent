@@ -35,12 +35,14 @@ import Data.List (find, intercalate, sort, groupBy)
 import Data.Pool (Pool)
 import Data.Text (Text, pack)
 import qualified Data.Text.IO as T
+import Data.Time.Format (defaultTimeLocale, formatTime)
 import Text.Read (readMaybe)
 import System.Environment (getEnvironment)
 import Data.Acquire (Acquire, mkAcquire, with)
 
 import Data.Conduit
 import qualified Blaze.ByteString.Builder.Char8 as BBB
+import qualified Blaze.ByteString.Builder.Char.Utf8 as Utf8
 import qualified Blaze.ByteString.Builder.ByteString as BBS
 import qualified Data.Conduit.List as CL
 import qualified Data.Map as Map
@@ -211,7 +213,7 @@ instance MySQL.Param P where
     render (P (PersistBool b))        = MySQL.render b
     render (P (PersistDay d))         = MySQL.render d
     render (P (PersistTimeOfDay t))   = MySQL.render t
-    render (P (PersistUTCTime t))     = MySQL.render t
+    render (P (PersistUTCTime t))     = MySQL.Plain $ Utf8.fromString $ formatTime defaultTimeLocale "'%F %T%Q'" t
     render (P PersistNull)            = MySQL.render MySQL.Null
     render (P (PersistList l))        = MySQL.render $ listToJSON l
     render (P (PersistMap m))         = MySQL.render $ mapToJSON m
