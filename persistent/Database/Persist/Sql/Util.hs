@@ -33,7 +33,7 @@ keyAndEntityColumnNames :: EntityDef -> SqlBackend -> [Sql]
 keyAndEntityColumnNames ent conn = map (connEscapeName conn . fieldDB) (keyAndEntityFields ent)
 
 entityColumnCount :: EntityDef -> Int
-entityColumnCount e = length (entityFields e)
+entityColumnCount e = length (entityFieldsAndAutos e)
                     + if hasCompositeKey e then 0 else 1
 
 hasCompositeKey :: EntityDef -> Bool
